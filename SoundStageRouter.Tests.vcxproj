@@ -51,6 +51,7 @@
     <ClCompile Include="tests\audio\TestPatternGeneratorTests.cpp" />
     <ClCompile Include="tests\audio\TelemetryQueueTests.cpp" />
     <ClCompile Include="tests\audio\WasapiEndpointSessionTests.cpp" />
+    <ClCompile Include="tests\audio\WasapiFaultClassificationTests.cpp" />
     <ClCompile Include="src\audio\TestPatternGenerator.cpp" />
     <ClCompile Include="src\audio\WasapiBackend.cpp" />
     <ClCompile Include="src\audio\WasapiEndpointSession.cpp" />

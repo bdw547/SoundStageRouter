@@ -65,6 +65,11 @@ namespace soundstage::audio
                 {CommandType::Start, std::move(configuration),
                  SpeakerRole::Front, 0});
         }
+        EngineStatus preparing;
+        preparing.state = PlaybackState::Preparing;
+        status_.store(
+            std::make_shared<const EngineStatus>(preparing),
+            std::memory_order_release);
         condition_.notify_one();
     }
 

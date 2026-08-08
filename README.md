@@ -1,29 +1,49 @@
 # SoundStage Router
 
-SoundStage Router is a native Windows prototype for combining physical audio output
-devices into one synchronized surround layout.
+SoundStage Router is a native Windows prototype for synchronizing two physical
+audio outputs as one front/rear listening layout.
 
-The current milestone provides:
+## Synchronized test playback milestone
 
-- WASAPI/MMDevice enumeration of active Windows render endpoints.
-- Friendly names, default-device detection, and native mix-format inspection.
-- Front and rear endpoint assignment for a soundbar and Bluetooth headrest.
-- Per-endpoint delay values from 0 to 2000 ms.
-- Persistent per-user configuration in `%LOCALAPPDATA%\SoundStageRouter\routing.ini`.
+The application generates deterministic test audio and renders it to two
+distinct shared-mode WASAPI endpoints. It supports Front and Rear roles,
+paired and alternating clicks, role-specific tones, live manual delay from
+0–2000 ms, endpoint-clock telemetry, and bounded drift correction. Rear is the
+default clock reference; manual delay remains the authority for acoustic
+alignment.
 
-## Build
+This milestone does **not** capture or reroute system audio, open microphone or
+loopback capture, decode media, or install a virtual audio device. A virtual
+5.1/7.1 endpoint, system capture, and automatic microphone calibration remain
+future work.
 
-Open `SoundStageRouter.sln` in Visual Studio 2026 and build `Release | x64`, or run:
+Settings remain in
+`%LOCALAPPDATA%\SoundStageRouter\routing.ini`, including endpoint assignments,
+delays, and the last test pattern.
+
+## Build and test
+
+Use Visual Studio 2026 with PlatformToolset `v145`, Windows SDK
+`10.0.28000.0`, and x64 only:
 
 ```powershell
-msbuild SoundStageRouter.sln -p:Configuration=Release -p:Platform=x64
+msbuild SoundStageRouter.sln -t:Rebuild -p:Configuration=Debug -p:Platform=x64
+.\build\tests\Debug\SoundStageRouter.Tests.exe
+msbuild SoundStageRouter.sln -t:Rebuild -p:Configuration=Release -p:Platform=x64
+.\build\tests\Release\SoundStageRouter.Tests.exe
 ```
 
-The executable is written to `build\Release\SoundStageRouter.exe`.
+The application executables are written to
+`build\Debug\SoundStageRouter.exe` and
+`build\Release\SoundStageRouter.exe`.
 
-## Next milestone
+The native tests cover deterministic DSP, format conversion, long-running
+clock simulation, engine lifecycle, cancellation, lock-free telemetry, and
+WASAPI fault injection without requiring audio hardware. Final acceptance
+still requires the documented Realtek/Bluetooth two-device smoke test.
 
-The next layer will open one WASAPI render stream per assigned endpoint, generate
-channel-specific test tones, measure endpoint clock positions, and implement delay
-buffers plus adaptive drift correction. A virtual 5.1/7.1 render endpoint follows
-after the user-mode routing engine is stable.
+## Design records
+
+- [Approved synchronized playback design](docs/superpowers/specs/2026-08-08-synchronized-test-playback-design.md)
+- [Synchronized playback implementation plan](docs/superpowers/plans/2026-08-08-synchronized-test-playback.md)
+- [Separate acoustic alignment analyzer plan](docs/superpowers/plans/2026-08-08-acoustic-alignment-analyzer.md)

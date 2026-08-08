@@ -4,11 +4,18 @@
 #include "EndpointSession.h"
 #include "WasapiBackend.h"
 
+#include <windows.h>
+
 #include <cstdint>
 #include <memory>
 
 namespace soundstage::audio
 {
+    [[nodiscard]] EngineFault ClassifyWasapiFailure(
+        HRESULT result, SpeakerRole role) noexcept;
+    [[nodiscard]] std::wstring FormatFault(
+        const EngineFault& fault);
+
     struct InjectedSessionFailure
     {
         std::uint32_t faultCode;

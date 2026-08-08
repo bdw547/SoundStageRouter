@@ -36,6 +36,9 @@ TEST(Coordinator_PostStartIsNonBlockingAndStopCancelsPreparation)
     coordinator.PostStart(ValidRunConfiguration());
     const auto elapsed = std::chrono::steady_clock::now() - before;
     EXPECT_TRUE(elapsed < std::chrono::milliseconds(10));
+    EXPECT_TRUE(
+        coordinator.Status()->state == PlaybackState::Preparing ||
+        coordinator.Status()->state == PlaybackState::Running);
     EXPECT_TRUE(WaitFor([&] {
         return observed->Session(SpeakerRole::Front).prepareCalls.load() == 1;
     }));

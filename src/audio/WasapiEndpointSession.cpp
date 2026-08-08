@@ -1,17 +1,70 @@
 #include "WasapiEndpointSession.h"
 
 #include <objbase.h>
+#include <audioclient.h>
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
+#include <sstream>
 #include <thread>
 #include <utility>
 
 namespace soundstage::audio
 {
+    EngineFault ClassifyWasapiFailure(
+        const HRESULT result,
+        const SpeakerRole role) noexcept
+    {
+        return {
+            FAILED(result)
+                ? static_cast<std::uint32_t>(result) : 0u,
+            role,
+            {}
+        };
+    }
+
+    std::wstring FormatFault(const EngineFault& fault)
+    {
+        const std::uint32_t deviceInvalidated =
+            static_cast<std::uint32_t>(
+                AUDCLNT_E_DEVICE_INVALIDATED);
+        const std::uint32_t resourcesInvalidated =
+            static_cast<std::uint32_t>(
+                AUDCLNT_E_RESOURCES_INVALIDATED);
+        if (fault.code == deviceInvalidated)
+        {
+            return fault.role == SpeakerRole::Front
+                ? L"Front output disconnected"
+                : L"Rear output disconnected";
+        }
+        if (fault.code == resourcesInvalidated)
+        {
+            return L"Endpoint resources invalidated";
+        }
+        switch (fault.code)
+        {
+        case UnsupportedFormatCode:
+            return L"Unsupported endpoint format";
+        case RepeatedUnderrunCode:
+            return L"Render deadline repeatedly missed";
+        case ClockUnavailableCode:
+            return L"Endpoint clock unavailable";
+        default:
+            break;
+        }
+        if (!fault.message.empty())
+        {
+            return fault.message;
+        }
+        std::wostringstream message;
+        message << L"Audio failure 0x"
+                << std::hex << fault.code;
+        return message.str();
+    }
+
     namespace
     {
         struct BackendFailure

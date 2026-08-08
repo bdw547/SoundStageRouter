@@ -1,4 +1,5 @@
 #include "AppWindow.h"
+#include "audio/WasapiEndpointSession.h"
 
 #include <commctrl.h>
 #include <windowsx.h>
@@ -516,7 +517,16 @@ namespace soundstage
         }
         SetPlaybackControlsEnabled(false);
         SetStatus(L"Preparing synchronized test playback...");
-        coordinator_->PostStart(std::move(*configuration));
+        try
+        {
+            coordinator_->PostStart(std::move(*configuration));
+        }
+        catch (const std::exception& error)
+        {
+            SetPlaybackControlsEnabled(true);
+            MessageBoxA(window_, error.what(), "Playback error",
+                        MB_OK | MB_ICONERROR);
+        }
     }
 
     std::optional<audio::RunConfiguration>
@@ -604,16 +614,8 @@ namespace soundstage
              << L" ppm";
         if (engineStatus.lastFault.code != 0)
         {
-            sync << L" | fault ";
-            if (!engineStatus.lastFault.message.empty())
-            {
-                sync << engineStatus.lastFault.message;
-            }
-            else
-            {
-                sync << L"0x" << std::hex
-                     << engineStatus.lastFault.code;
-            }
+            sync << L" | "
+                 << audio::FormatFault(engineStatus.lastFault);
         }
         SetWindowTextW(syncStatus_, sync.str().c_str());
     }

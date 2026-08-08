@@ -237,6 +237,14 @@ On the target Realtek soundbar/subwoofer and Bluetooth headrest:
 
 Hardware acceptance is required because shared-mode WASAPI telemetry cannot observe all latency beyond the OS render endpoint.
 
+### Implementation status
+
+Software implementation and non-hardware verification completed on 2026-08-08
+for x64 Debug and Release. The target Realtek/Bluetooth hardware acceptance
+steps above remain pending, so this specification retains its
+`Approved for implementation planning` status. No acoustic analyzer files were
+implemented as part of this milestone.
+
 ## Observability
 
 The UI exposes enough information to diagnose the target setup without turning the render loop into a logger:
