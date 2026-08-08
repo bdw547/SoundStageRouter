@@ -76,6 +76,7 @@
     <ClInclude Include="src\audio\TestPatternGenerator.h" />
     <ClInclude Include="src\audio\DelayLine.h" />
     <ClInclude Include="src\audio\AdaptiveResampler.h" />
+    <ClInclude Include="src\audio\ClockSynchronizer.h" />
     <ClInclude Include="src\audio\EndpointConverter.h" />
     <ClInclude Include="src\audio\EndpointPipeline.h" />
   </ItemGroup>
@@ -87,6 +88,7 @@
     <ClCompile Include="src\audio\TestPatternGenerator.cpp" />
     <ClCompile Include="src\audio\DelayLine.cpp" />
     <ClCompile Include="src\audio\AdaptiveResampler.cpp" />
+    <ClCompile Include="src\audio\ClockSynchronizer.cpp" />
     <ClCompile Include="src\audio\EndpointConverter.cpp" />
     <ClCompile Include="src\audio\EndpointPipeline.cpp" />
   </ItemGroup>

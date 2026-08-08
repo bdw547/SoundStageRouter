@@ -37,6 +37,7 @@
   <ItemGroup>
     <ClCompile Include="tests\TestMain.cpp" />
     <ClCompile Include="tests\audio\AudioTypesTests.cpp" />
+    <ClCompile Include="tests\audio\ClockSynchronizerTests.cpp" />
     <ClCompile Include="tests\audio\AdaptiveResamplerTests.cpp" />
     <ClCompile Include="tests\audio\DelayLineTests.cpp" />
     <ClCompile Include="tests\audio\EndpointConverterTests.cpp" />
@@ -45,6 +46,7 @@
     <ClCompile Include="src\audio\TestPatternGenerator.cpp" />
     <ClCompile Include="src\audio\DelayLine.cpp" />
     <ClCompile Include="src\audio\AdaptiveResampler.cpp" />
+    <ClCompile Include="src\audio\ClockSynchronizer.cpp" />
     <ClCompile Include="src\audio\EndpointConverter.cpp" />
     <ClCompile Include="src\audio\EndpointPipeline.cpp" />
   </ItemGroup>
