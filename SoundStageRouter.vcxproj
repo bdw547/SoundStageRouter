@@ -74,6 +74,7 @@
     <ClInclude Include="src\AudioEndpoints.h" />
     <ClInclude Include="src\RouterSettings.h" />
     <ClInclude Include="src\audio\TestPatternGenerator.h" />
+    <ClInclude Include="src\audio\DelayLine.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\AppWindow.cpp" />
@@ -81,6 +82,7 @@
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\RouterSettings.cpp" />
     <ClCompile Include="src\audio\TestPatternGenerator.cpp" />
+    <ClCompile Include="src\audio\DelayLine.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
