@@ -1,9 +1,9 @@
 .vs/
 .superpowers/
+.worktrees/
 build/
 *.obj
 *.user
 *.suo
 *.VC.db
 *.VC.opendb
-
