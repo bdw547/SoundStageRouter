@@ -37,6 +37,22 @@ The application executables are written to
 `build\Debug\SoundStageRouter.exe` and
 `build\Release\SoundStageRouter.exe`.
 
+## Offline acoustic analyzer
+
+`SoundStageAlignmentAnalyzer.exe` evaluates an externally recorded 48 kHz
+PCM16 or float32 WAV containing paired clicks:
+
+```powershell
+.\build\Release\SoundStageAlignmentAnalyzer.exe .\recording.wav
+```
+
+It returns `0` for PASS, `2` for FAIL, and `1` for invalid input or analysis
+errors. PASS requires at least 20 detected pairs and a 95th-percentile absolute
+front/rear onset difference no greater than 10.00 ms. The tool only reads an
+existing WAV; it never opens a microphone or render endpoint. Follow the
+[two-device hardware acceptance protocol](docs/testing/hardware-acceptance.md)
+for the required start and 30-minute recordings.
+
 The native tests cover deterministic DSP, format conversion, long-running
 clock simulation, engine lifecycle, cancellation, lock-free telemetry, and
 WASAPI fault injection without requiring audio hardware. Final acceptance

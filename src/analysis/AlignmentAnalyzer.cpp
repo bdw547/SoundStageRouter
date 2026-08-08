@@ -7,6 +7,8 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <iomanip>
+#include <sstream>
 #include <span>
 #include <vector>
 
@@ -307,5 +309,51 @@ namespace soundstage::analysis
                 "at least 20 paired clicks are required";
         }
         return result;
+    }
+
+    std::string FormatAlignmentReport(
+        const std::filesystem::path& path,
+        const AlignmentResult& result)
+    {
+        std::ostringstream report;
+        report << "Recording: " << path.filename().string() << '\n'
+               << "Detected paired clicks: "
+               << result.detectedPairs << '\n'
+               << std::fixed << std::setprecision(2)
+               << "Median signed offset: ";
+        if (result.medianSignedMs > 0.0)
+        {
+            report << "Front leads by "
+                   << result.medianSignedMs << " ms\n";
+        }
+        else if (result.medianSignedMs < 0.0)
+        {
+            report << "Rear leads by "
+                   << std::abs(result.medianSignedMs) << " ms\n";
+        }
+        else
+        {
+            report << "Front and Rear aligned (0.00 ms)\n";
+        }
+        report << "95th percentile: "
+               << result.percentile95AbsoluteMs << " ms\n"
+               << "maximum absolute offset: "
+               << result.maximumAbsoluteMs << " ms\n"
+               << "threshold: 10.00 ms at 95% with at least 20 pairs\n";
+        if (!result.valid)
+        {
+            report << "Result: INVALID";
+            if (!result.error.empty())
+            {
+                report << " - " << result.error;
+            }
+            report << '\n';
+        }
+        else
+        {
+            report << "Result: "
+                   << (result.passed ? "PASS" : "FAIL") << '\n';
+        }
+        return report.str();
     }
 }

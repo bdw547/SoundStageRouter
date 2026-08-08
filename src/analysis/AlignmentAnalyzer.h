@@ -3,6 +3,7 @@
 #include "WavReader.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -28,4 +29,7 @@ namespace soundstage::analysis
 
     [[nodiscard]] AlignmentResult AnalyzeAlignment(
         const WavRecording& recording);
+    [[nodiscard]] std::string FormatAlignmentReport(
+        const std::filesystem::path& path,
+        const AlignmentResult& result);
 }

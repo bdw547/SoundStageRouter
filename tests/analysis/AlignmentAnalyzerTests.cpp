@@ -153,3 +153,32 @@ TEST(AlignmentAnalyzer_RejectsWrongSampleRate)
     EXPECT_TRUE(!result.valid);
     EXPECT_TRUE(!result.error.empty());
 }
+
+TEST(AlignmentReport_ContainsDecisionEvidence)
+{
+    AlignmentResult result{true, true, 30, 5.0, 6.0, 7.0};
+    const std::string report =
+        FormatAlignmentReport("start.wav", result);
+    EXPECT_TRUE(report.find("start.wav") != std::string::npos);
+    EXPECT_TRUE(report.find("30") != std::string::npos);
+    EXPECT_TRUE(
+        report.find("Front leads by 5.00 ms") != std::string::npos);
+    EXPECT_TRUE(
+        report.find("95th percentile: 6.00 ms") != std::string::npos);
+    EXPECT_TRUE(
+        report.find("maximum absolute offset: 7.00 ms") !=
+        std::string::npos);
+    EXPECT_TRUE(
+        report.find("threshold: 10.00 ms") != std::string::npos);
+    EXPECT_TRUE(report.find("PASS") != std::string::npos);
+}
+
+TEST(AlignmentReport_DescribesRearLeadingFailure)
+{
+    AlignmentResult result{true, false, 25, -4.0, 12.0, 15.0};
+    const std::string report =
+        FormatAlignmentReport("late.wav", result);
+    EXPECT_TRUE(
+        report.find("Rear leads by 4.00 ms") != std::string::npos);
+    EXPECT_TRUE(report.find("FAIL") != std::string::npos);
+}
