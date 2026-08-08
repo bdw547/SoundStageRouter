@@ -2,9 +2,12 @@
 
 #include "AudioEndpoints.h"
 #include "RouterSettings.h"
+#include "audio/AudioEngineCoordinator.h"
 
 #include <windows.h>
 
+#include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,6 +31,11 @@ namespace soundstage
         void RefreshDevices();
         void PopulateControls();
         void SaveSettings();
+        void StartTest();
+        [[nodiscard]] std::optional<audio::RunConfiguration>
+            BuildRunConfiguration() const;
+        void RenderEngineStatus(const audio::EngineStatus& status) const;
+        void SetPlaybackControlsEnabled(bool selectable) const;
         void SetStatus(const std::wstring& text) const;
         int FindEndpoint(const std::wstring& id) const;
         int SelectedEndpointIndex(HWND combo) const;
@@ -39,12 +47,23 @@ namespace soundstage
         HWND title_ = nullptr;
         HWND subtitle_ = nullptr;
         HWND deviceList_ = nullptr;
+        HWND frontLabel_ = nullptr;
         HWND frontCombo_ = nullptr;
+        HWND frontDelayLabel_ = nullptr;
         HWND frontDelay_ = nullptr;
+        HWND rearLabel_ = nullptr;
         HWND rearCombo_ = nullptr;
+        HWND rearDelayLabel_ = nullptr;
         HWND rearDelay_ = nullptr;
+        HWND patternLabel_ = nullptr;
+        HWND patternCombo_ = nullptr;
         HWND refreshButton_ = nullptr;
         HWND saveButton_ = nullptr;
+        HWND startButton_ = nullptr;
+        HWND stopButton_ = nullptr;
+        HWND frontStatus_ = nullptr;
+        HWND rearStatus_ = nullptr;
+        HWND syncStatus_ = nullptr;
         HWND status_ = nullptr;
         HFONT titleFont_ = nullptr;
         HFONT bodyFont_ = nullptr;
@@ -52,7 +71,8 @@ namespace soundstage
         HBRUSH backgroundBrush_ = nullptr;
 
         std::vector<AudioEndpoint> endpoints_;
-        RouterSettings settings_;
         RouterSettingsStore settingsStore_;
+        RouterSettings settings_;
+        std::unique_ptr<audio::AudioEngineCoordinator> coordinator_;
     };
 }

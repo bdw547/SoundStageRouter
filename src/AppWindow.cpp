@@ -4,6 +4,9 @@
 #include <windowsx.h>
 
 #include <algorithm>
+#include <iomanip>
+#include <optional>
+#include <sstream>
 #include <stdexcept>
 
 namespace
@@ -17,6 +20,11 @@ namespace
     constexpr int RearDelayId = 1005;
     constexpr int RefreshButtonId = 1006;
     constexpr int SaveButtonId = 1007;
+    constexpr int PatternComboId = 1008;
+    constexpr int StartButtonId = 1009;
+    constexpr int StopButtonId = 1010;
+    constexpr UINT_PTR StatusTimerId = 1;
+    constexpr UINT StatusTimerPeriodMs = 250;
 
     HMENU ControlId(const int value)
     {
@@ -48,7 +56,9 @@ namespace
 namespace soundstage
 {
     AppWindow::AppWindow(const HINSTANCE instance)
-        : instance_(instance), settings_(settingsStore_.Load())
+        : instance_(instance),
+          settings_(settingsStore_.Load()),
+          coordinator_(std::make_unique<audio::AudioEngineCoordinator>())
     {
         backgroundBrush_ = CreateSolidBrush(RGB(246, 247, 250));
         titleFont_ = CreateFontW(-26, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
@@ -78,7 +88,7 @@ namespace soundstage
 
         window_ = CreateWindowExW(0, WindowClassName, L"SoundStage Router",
                                   WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-                                  980, 700, nullptr, nullptr, instance_, this);
+                                  980, 820, nullptr, nullptr, instance_, this);
         if (window_ == nullptr)
         {
             throw std::runtime_error("Unable to create the application window.");
@@ -87,6 +97,11 @@ namespace soundstage
 
     AppWindow::~AppWindow()
     {
+        if (coordinator_)
+        {
+            coordinator_->PostStop();
+            coordinator_.reset();
+        }
         if (titleFont_ != nullptr) DeleteObject(titleFont_);
         if (bodyFont_ != nullptr) DeleteObject(bodyFont_);
         if (smallFont_ != nullptr) DeleteObject(smallFont_);
@@ -131,11 +146,28 @@ namespace soundstage
         case WM_CREATE:
             CreateControls();
             RefreshDevices();
+            SetTimer(window_, StatusTimerId, StatusTimerPeriodMs, nullptr);
             return 0;
         case WM_SIZE:
             LayoutControls(LOWORD(lParam), HIWORD(lParam));
             return 0;
         case WM_COMMAND:
+            if (HIWORD(wParam) == EN_CHANGE && coordinator_ &&
+                coordinator_->Status()->state == audio::PlaybackState::Running)
+            {
+                if (LOWORD(wParam) == FrontDelayId)
+                {
+                    coordinator_->PostDelay(
+                        audio::SpeakerRole::Front,
+                        audio::ClampDelayMs(ReadDelay(frontDelay_)));
+                }
+                else if (LOWORD(wParam) == RearDelayId)
+                {
+                    coordinator_->PostDelay(
+                        audio::SpeakerRole::Rear,
+                        audio::ClampDelayMs(ReadDelay(rearDelay_)));
+                }
+            }
             switch (LOWORD(wParam))
             {
             case RefreshButtonId:
@@ -144,14 +176,38 @@ namespace soundstage
             case SaveButtonId:
                 SaveSettings();
                 return 0;
+            case StartButtonId:
+                StartTest();
+                return 0;
+            case StopButtonId:
+                if (coordinator_) coordinator_->PostStop();
+                return 0;
             default:
                 break;
+            }
+            break;
+        case WM_TIMER:
+            if (wParam == StatusTimerId && coordinator_)
+            {
+                const auto status = coordinator_->Status();
+                RenderEngineStatus(*status);
+                const bool selectable =
+                    status->state == audio::PlaybackState::Stopped ||
+                    status->state == audio::PlaybackState::Faulted;
+                SetPlaybackControlsEnabled(selectable);
+                return 0;
             }
             break;
         case WM_CTLCOLORSTATIC:
             SetBkColor(reinterpret_cast<HDC>(wParam), RGB(246, 247, 250));
             return reinterpret_cast<LRESULT>(backgroundBrush_);
         case WM_DESTROY:
+            KillTimer(window_, StatusTimerId);
+            if (coordinator_)
+            {
+                coordinator_->PostStop();
+                coordinator_.reset();
+            }
             PostQuitMessage(0);
             return 0;
         default:
@@ -175,23 +231,40 @@ namespace soundstage
         InsertColumn(deviceList_, 1, 280, L"Windows mix format");
         InsertColumn(deviceList_, 2, 110, L"Role");
 
-        CreateLabel(window_, L"Front output (soundbar / monitor speaker)");
+        frontLabel_ = CreateLabel(
+            window_, L"Front output (soundbar / monitor speaker)");
         frontCombo_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"",
             WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
             0, 0, 0, 0, window_, ControlId(FrontComboId), instance_, nullptr);
-        CreateLabel(window_, L"Delay (ms)");
+        frontDelayLabel_ = CreateLabel(window_, L"Delay (ms)");
         frontDelay_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"0",
             WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_RIGHT | WS_TABSTOP,
             0, 0, 0, 0, window_, ControlId(FrontDelayId), instance_, nullptr);
 
-        CreateLabel(window_, L"Rear output (Bluetooth headrest)");
+        rearLabel_ = CreateLabel(
+            window_, L"Rear output (Bluetooth headrest)");
         rearCombo_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"COMBOBOX", L"",
             WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
             0, 0, 0, 0, window_, ControlId(RearComboId), instance_, nullptr);
-        CreateLabel(window_, L"Delay (ms)");
+        rearDelayLabel_ = CreateLabel(window_, L"Delay (ms)");
         rearDelay_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"0",
             WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_RIGHT | WS_TABSTOP,
             0, 0, 0, 0, window_, ControlId(RearDelayId), instance_, nullptr);
+
+        patternLabel_ = CreateLabel(window_, L"Test pattern");
+        patternCombo_ = CreateWindowExW(
+            WS_EX_CLIENTEDGE, L"COMBOBOX", L"",
+            WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+            0, 0, 0, 0, window_, ControlId(PatternComboId),
+            instance_, nullptr);
+        for (const wchar_t* pattern : {
+                 L"Paired clicks", L"Alternating clicks",
+                 L"Front tone", L"Rear tone"})
+        {
+            ComboBox_AddString(patternCombo_, pattern);
+        }
+        ComboBox_SetCurSel(
+            patternCombo_, static_cast<int>(settings_.lastPattern));
 
         refreshButton_ = CreateWindowExW(0, L"BUTTON", L"Refresh devices",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
@@ -199,16 +272,39 @@ namespace soundstage
         saveButton_ = CreateWindowExW(0, L"BUTTON", L"Save layout",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
             0, 0, 0, 0, window_, ControlId(SaveButtonId), instance_, nullptr);
+        startButton_ = CreateWindowExW(
+            0, L"BUTTON", L"Start test",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
+            0, 0, 0, 0, window_, ControlId(StartButtonId),
+            instance_, nullptr);
+        stopButton_ = CreateWindowExW(
+            0, L"BUTTON", L"Stop",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+            0, 0, 0, 0, window_, ControlId(StopButtonId),
+            instance_, nullptr);
+        EnableWindow(stopButton_, FALSE);
+        frontStatus_ = CreateLabel(window_, L"Front: stopped");
+        rearStatus_ = CreateLabel(window_, L"Rear: stopped");
+        syncStatus_ = CreateLabel(
+            window_, L"Clock correction: settling");
         status_ = CreateLabel(window_, L"", SS_LEFT | SS_ENDELLIPSIS);
 
-        for (const HWND child : {title_, subtitle_, deviceList_, frontCombo_, frontDelay_,
-                                 rearCombo_, rearDelay_, refreshButton_, saveButton_, status_})
+        for (const HWND child : {
+                 title_, subtitle_, deviceList_,
+                 frontLabel_, frontCombo_, frontDelayLabel_, frontDelay_,
+                 rearLabel_, rearCombo_, rearDelayLabel_, rearDelay_,
+                 patternLabel_, patternCombo_, refreshButton_, saveButton_,
+                 startButton_, stopButton_, frontStatus_, rearStatus_,
+                 syncStatus_, status_})
         {
             ApplyFont(child, bodyFont_);
         }
         ApplyFont(title_, titleFont_);
         ApplyFont(subtitle_, smallFont_);
         ApplyFont(status_, smallFont_);
+        ApplyFont(frontStatus_, smallFont_);
+        ApplyFont(rearStatus_, smallFont_);
+        ApplyFont(syncStatus_, smallFont_);
     }
 
     void AppWindow::LayoutControls(const int width, const int height) const
@@ -217,43 +313,36 @@ namespace soundstage
         const int contentWidth = std::max(300, width - margin * 2);
         MoveWindow(title_, margin, 22, contentWidth, 36, TRUE);
         MoveWindow(subtitle_, margin, 59, contentWidth, 24, TRUE);
-        MoveWindow(deviceList_, margin, 94, contentWidth, std::max(170, height - 380), TRUE);
+        MoveWindow(deviceList_, margin, 94, contentWidth,
+                   std::max(150, height - 520), TRUE);
 
-        const int formTop = std::max(285, height - 270);
+        const int formTop = std::max(265, height - 410);
         const int delayWidth = 100;
         const int gap = 16;
         const int comboWidth = contentWidth - delayWidth - gap;
 
-        const HWND frontLabel = GetWindow(window_, GW_CHILD);
-        HWND child = frontLabel;
-        std::vector<HWND> labels;
-        while (child != nullptr)
-        {
-            wchar_t className[32]{};
-            GetClassNameW(child, className, static_cast<int>(std::size(className)));
-            if (wcscmp(className, L"Static") == 0 && child != title_ && child != subtitle_ &&
-                child != status_)
-            {
-                labels.push_back(child);
-            }
-            child = GetWindow(child, GW_HWNDNEXT);
-        }
-
-        if (labels.size() >= 4)
-        {
-            MoveWindow(labels[0], margin, formTop, comboWidth, 23, TRUE);
-            MoveWindow(labels[1], margin + comboWidth + gap, formTop, delayWidth, 23, TRUE);
-            MoveWindow(labels[2], margin, formTop + 72, comboWidth, 23, TRUE);
-            MoveWindow(labels[3], margin + comboWidth + gap, formTop + 72, delayWidth, 23, TRUE);
-        }
+        MoveWindow(frontLabel_, margin, formTop, comboWidth, 23, TRUE);
+        MoveWindow(frontDelayLabel_, margin + comboWidth + gap, formTop,
+                   delayWidth, 23, TRUE);
+        MoveWindow(rearLabel_, margin, formTop + 62, comboWidth, 23, TRUE);
+        MoveWindow(rearDelayLabel_, margin + comboWidth + gap, formTop + 62,
+                   delayWidth, 23, TRUE);
 
         MoveWindow(frontCombo_, margin, formTop + 25, comboWidth, 220, TRUE);
         MoveWindow(frontDelay_, margin + comboWidth + gap, formTop + 25, delayWidth, 30, TRUE);
-        MoveWindow(rearCombo_, margin, formTop + 97, comboWidth, 220, TRUE);
-        MoveWindow(rearDelay_, margin + comboWidth + gap, formTop + 97, delayWidth, 30, TRUE);
-        MoveWindow(refreshButton_, margin, formTop + 148, 150, 36, TRUE);
-        MoveWindow(saveButton_, margin + 162, formTop + 148, 140, 36, TRUE);
-        MoveWindow(status_, margin, formTop + 196, contentWidth, 25, TRUE);
+        MoveWindow(rearCombo_, margin, formTop + 87, comboWidth, 220, TRUE);
+        MoveWindow(rearDelay_, margin + comboWidth + gap, formTop + 87,
+                   delayWidth, 30, TRUE);
+        MoveWindow(patternLabel_, margin, formTop + 126, 240, 23, TRUE);
+        MoveWindow(patternCombo_, margin, formTop + 151, 260, 180, TRUE);
+        MoveWindow(refreshButton_, margin, formTop + 198, 150, 36, TRUE);
+        MoveWindow(saveButton_, margin + 162, formTop + 198, 140, 36, TRUE);
+        MoveWindow(startButton_, margin + 314, formTop + 198, 140, 36, TRUE);
+        MoveWindow(stopButton_, margin + 466, formTop + 198, 110, 36, TRUE);
+        MoveWindow(frontStatus_, margin, formTop + 246, contentWidth, 22, TRUE);
+        MoveWindow(rearStatus_, margin, formTop + 270, contentWidth, 22, TRUE);
+        MoveWindow(syncStatus_, margin, formTop + 294, contentWidth, 22, TRUE);
+        MoveWindow(status_, margin, formTop + 322, contentWidth, 25, TRUE);
     }
 
     void AppWindow::RefreshDevices()
@@ -274,6 +363,11 @@ namespace soundstage
             if (endpoints_.size() < 2)
             {
                 status += L" Connect the Bluetooth headrest and refresh.";
+            }
+            if (settings_.loadAdjustedValues)
+            {
+                status +=
+                    L" Settings contained invalid values; supported defaults were applied.";
             }
             SetStatus(status);
         }
@@ -306,10 +400,22 @@ namespace soundstage
 
             ComboBox_AddString(frontCombo_, endpoint.name.c_str());
             ComboBox_AddString(rearCombo_, endpoint.name.c_str());
+            ComboBox_SetItemData(
+                frontCombo_, static_cast<int>(index),
+                static_cast<LPARAM>(index));
+            ComboBox_SetItemData(
+                rearCombo_, static_cast<int>(index),
+                static_cast<LPARAM>(index));
         }
 
         int frontSelection = FindEndpoint(settings_.frontEndpointId);
-        if (frontSelection < 0)
+        if (frontSelection < 0 && !settings_.frontEndpointId.empty())
+        {
+            frontSelection = ComboBox_AddString(
+                frontCombo_, L"Saved Front output unavailable");
+            ComboBox_SetItemData(frontCombo_, frontSelection, -1);
+        }
+        else if (frontSelection < 0)
         {
             const auto defaultDevice = std::find_if(endpoints_.begin(), endpoints_.end(),
                 [](const AudioEndpoint& endpoint) { return endpoint.isDefault; });
@@ -319,7 +425,13 @@ namespace soundstage
         }
 
         int rearSelection = FindEndpoint(settings_.rearEndpointId);
-        if (rearSelection < 0)
+        if (rearSelection < 0 && !settings_.rearEndpointId.empty())
+        {
+            rearSelection = ComboBox_AddString(
+                rearCombo_, L"Saved Rear output unavailable");
+            ComboBox_SetItemData(rearCombo_, rearSelection, -1);
+        }
+        else if (rearSelection < 0)
         {
             for (std::size_t index = 0; index < endpoints_.size(); ++index)
             {
@@ -358,6 +470,10 @@ namespace soundstage
         settings_.rearEndpointId = endpoints_[rear].id;
         settings_.frontDelayMs = ReadDelay(frontDelay_);
         settings_.rearDelayMs = ReadDelay(rearDelay_);
+        const int pattern = ComboBox_GetCurSel(patternCombo_);
+        settings_.lastPattern = pattern >= 0 && pattern <= 3
+            ? static_cast<audio::TestPattern>(pattern)
+            : audio::TestPattern::PairedClicks;
 
         try
         {
@@ -368,6 +484,150 @@ namespace soundstage
         {
             MessageBoxA(window_, error.what(), "Settings error", MB_OK | MB_ICONERROR);
         }
+    }
+
+    void AppWindow::StartTest()
+    {
+        std::optional<audio::RunConfiguration> configuration =
+            BuildRunConfiguration();
+        if (!configuration)
+        {
+            return;
+        }
+
+        settings_.frontEndpointId =
+            configuration->routes[0].endpointId;
+        settings_.rearEndpointId =
+            configuration->routes[1].endpointId;
+        settings_.frontDelayMs = static_cast<int>(
+            configuration->routes[0].delayMs);
+        settings_.rearDelayMs = static_cast<int>(
+            configuration->routes[1].delayMs);
+        settings_.lastPattern = configuration->pattern;
+        try
+        {
+            settingsStore_.Save(settings_);
+        }
+        catch (const std::exception& error)
+        {
+            MessageBoxA(window_, error.what(), "Settings error",
+                        MB_OK | MB_ICONERROR);
+            return;
+        }
+        SetPlaybackControlsEnabled(false);
+        SetStatus(L"Preparing synchronized test playback...");
+        coordinator_->PostStart(std::move(*configuration));
+    }
+
+    std::optional<audio::RunConfiguration>
+    AppWindow::BuildRunConfiguration() const
+    {
+        const int frontIndex = SelectedEndpointIndex(frontCombo_);
+        const int rearIndex = SelectedEndpointIndex(rearCombo_);
+        if (frontIndex < 0 || rearIndex < 0)
+        {
+            MessageBoxW(
+                window_,
+                L"Both saved outputs must be active before starting.",
+                L"Output unavailable", MB_OK | MB_ICONWARNING);
+            return std::nullopt;
+        }
+        if (frontIndex == rearIndex)
+        {
+            MessageBoxW(
+                window_,
+                L"Front and rear must use different Windows output devices.",
+                L"Duplicate output", MB_OK | MB_ICONWARNING);
+            return std::nullopt;
+        }
+
+        audio::RunConfiguration configuration;
+        const int pattern = ComboBox_GetCurSel(patternCombo_);
+        configuration.pattern = pattern >= 0 && pattern <= 3
+            ? static_cast<audio::TestPattern>(pattern)
+            : audio::TestPattern::PairedClicks;
+        configuration.clockReferenceRole =
+            audio::SpeakerRole::Rear;
+        configuration.routes = {
+            {audio::SpeakerRole::Front,
+             endpoints_[frontIndex].id,
+             audio::ClampDelayMs(ReadDelay(frontDelay_)),
+             false},
+            {audio::SpeakerRole::Rear,
+             endpoints_[rearIndex].id,
+             audio::ClampDelayMs(ReadDelay(rearDelay_)),
+             true}
+        };
+        return configuration;
+    }
+
+    void AppWindow::RenderEngineStatus(
+        const audio::EngineStatus& engineStatus) const
+    {
+        const auto endpointText = [](const wchar_t* name,
+                                     const audio::EndpointTelemetry& endpoint,
+                                     const bool reference)
+        {
+            std::wostringstream text;
+            text << name << L": "
+                 << (endpoint.running ? L"running" :
+                     endpoint.prepared ? L"prepared" : L"stopped")
+                 << L" | " << endpoint.sampleRate << L" Hz / "
+                 << endpoint.channels << L" ch"
+                 << L" | buffer " << std::fixed << std::setprecision(1)
+                 << endpoint.bufferDurationMs << L" ms"
+                 << L" | delay " << endpoint.delayMs << L" ms"
+                 << L" | underruns " << endpoint.underrunCount
+                 << L" | " << (reference ? L"reference" : L"follower");
+            return text.str();
+        };
+        SetWindowTextW(
+            frontStatus_,
+            endpointText(
+                L"Front", engineStatus.endpoints[0], false).c_str());
+        SetWindowTextW(
+            rearStatus_,
+            endpointText(
+                L"Rear", engineStatus.endpoints[1], true).c_str());
+
+        const wchar_t* health =
+            engineStatus.clockHealth == audio::ClockHealth::Active
+                ? L"active"
+                : engineStatus.clockHealth ==
+                    audio::ClockHealth::Unavailable
+                    ? L"unavailable" : L"settling";
+        std::wostringstream sync;
+        sync << L"Clock correction: " << health
+             << L" | relative " << std::fixed << std::setprecision(1)
+             << engineStatus.relativePpm << L" ppm"
+             << L" | correction " << engineStatus.correctionPpm
+             << L" ppm";
+        if (engineStatus.lastFault.code != 0)
+        {
+            sync << L" | fault ";
+            if (!engineStatus.lastFault.message.empty())
+            {
+                sync << engineStatus.lastFault.message;
+            }
+            else
+            {
+                sync << L"0x" << std::hex
+                     << engineStatus.lastFault.code;
+            }
+        }
+        SetWindowTextW(syncStatus_, sync.str().c_str());
+    }
+
+    void AppWindow::SetPlaybackControlsEnabled(
+        const bool selectable) const
+    {
+        EnableWindow(frontCombo_, selectable);
+        EnableWindow(rearCombo_, selectable);
+        EnableWindow(patternCombo_, selectable);
+        EnableWindow(refreshButton_, selectable);
+        EnableWindow(saveButton_, selectable);
+        EnableWindow(startButton_, selectable);
+        EnableWindow(stopButton_, !selectable);
     }
 
     void AppWindow::SetStatus(const std::wstring& text) const
@@ -389,7 +649,11 @@ namespace soundstage
     {
         if (combo == nullptr) return -1;
         const LRESULT selected = SendMessageW(combo, CB_GETCURSEL, 0, 0);
-        return selected == CB_ERR ? -1 : static_cast<int>(selected);
+        if (selected == CB_ERR) return -1;
+        const LRESULT endpoint = SendMessageW(
+            combo, CB_GETITEMDATA, selected, 0);
+        return endpoint == CB_ERR || endpoint < 0
+            ? -1 : static_cast<int>(endpoint);
     }
 
     int AppWindow::ReadDelay(const HWND edit) const

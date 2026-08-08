@@ -34,11 +34,12 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>ole32.lib;uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>ole32.lib;uuid.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="tests\TestMain.cpp" />
+    <ClCompile Include="tests\RouterSettingsTests.cpp" />
     <ClCompile Include="tests\audio\AudioTypesTests.cpp" />
     <ClCompile Include="tests\audio\AudioEngineCoordinatorTests.cpp" />
     <ClCompile Include="tests\audio\ClockSynchronizerTests.cpp" />
@@ -53,6 +54,7 @@
     <ClCompile Include="src\audio\TestPatternGenerator.cpp" />
     <ClCompile Include="src\audio\WasapiBackend.cpp" />
     <ClCompile Include="src\audio\WasapiEndpointSession.cpp" />
+    <ClCompile Include="src\RouterSettings.cpp" />
     <ClCompile Include="src\audio\DelayLine.cpp" />
     <ClCompile Include="src\audio\AdaptiveResampler.cpp" />
     <ClCompile Include="src\audio\AudioEngineCoordinator.cpp" />
