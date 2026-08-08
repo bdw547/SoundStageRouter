@@ -40,6 +40,7 @@
   <ItemGroup>
     <ClCompile Include="tests\TestMain.cpp" />
     <ClCompile Include="tests\RouterSettingsTests.cpp" />
+    <ClCompile Include="tests\analysis\WavReaderTests.cpp" />
     <ClCompile Include="tests\audio\AudioTypesTests.cpp" />
     <ClCompile Include="tests\audio\AudioEngineCoordinatorTests.cpp" />
     <ClCompile Include="tests\audio\ClockSynchronizerTests.cpp" />
@@ -56,6 +57,7 @@
     <ClCompile Include="src\audio\WasapiBackend.cpp" />
     <ClCompile Include="src\audio\WasapiEndpointSession.cpp" />
     <ClCompile Include="src\RouterSettings.cpp" />
+    <ClCompile Include="src\analysis\WavReader.cpp" />
     <ClCompile Include="src\audio\DelayLine.cpp" />
     <ClCompile Include="src\audio\AdaptiveResampler.cpp" />
     <ClCompile Include="src\audio\AudioEngineCoordinator.cpp" />
