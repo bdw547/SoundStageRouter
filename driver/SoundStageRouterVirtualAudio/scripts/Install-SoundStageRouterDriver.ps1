@@ -40,13 +40,13 @@ if (-not $Force) {
     throw 'Refusing to install without -Force. Re-run with -Force (and optionally -WhatIf or -Confirm) after reviewing the documentation.'
 }
 
-$bcdeditOutput = & bcdedit /enum '{current}'
-if ($bcdeditOutput -notmatch 'testsigning\s+Yes') {
-    Write-Warning 'Windows TESTSIGNING is not enabled.'
-    Write-Host 'Enable it from an elevated prompt, then reboot before installing this dev-only driver package:'
-    Write-Host '  bcdedit /set testsigning on'
-    Write-Host 'A reboot is required after changing this setting.'
-    exit 1
+$bcdeditOutput = & bcdedit /enum all
+if (($bcdeditOutput -join "`n") -notmatch 'testsigning\s+Yes') {
+    throw @'
+Windows TESTSIGNING is not enabled.
+Enable it from an elevated prompt with "bcdedit /set testsigning on", then reboot
+before installing this development-only driver package.
+'@
 }
 
 $infPath = Join-Path $PackageRoot 'SoundStageRouterVirtualAudio.inf'
