@@ -13,9 +13,10 @@ default clock reference; manual delay remains the authority for acoustic
 alignment.
 
 This milestone does **not** capture or reroute system audio, open microphone or
-loopback capture, decode media, or install a virtual audio device. A virtual
-5.1/7.1 endpoint, system capture, and automatic microphone calibration remain
-future work.
+loopback capture, decode media, or install a virtual audio device. The
+user-mode app does not yet build, install, or route audio through the virtual
+5.1 endpoint driver described below; system capture and automatic microphone
+calibration remain future work.
 
 Settings remain in
 `%LOCALAPPDATA%\SoundStageRouter\routing.ini`, including endpoint assignments,

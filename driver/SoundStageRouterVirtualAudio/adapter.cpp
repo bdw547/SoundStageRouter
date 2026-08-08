@@ -22,6 +22,10 @@ Abstract:
 #define PUT_GUIDS_HERE
 
 #include <sysvad.h>
+// ContosoKeywordDetector.h must be included here (with PUT_GUIDS_HERE active,
+// see above) because it supplies the definitions for the keyword-detector
+// GUIDs that EndpointsCommon\minwavert.cpp declares extern and links against,
+// even though this driver does not expose a keyword-spotter pin.
 #include <ContosoKeywordDetector.h>
 #include "IHVPrivatePropertySet.h"
 
@@ -241,33 +245,11 @@ DWORD g_DoNotCreateDataFiles = 1;  // default is off.
 DWORD g_DisableToneGenerator = 0;  // default is to generate tones.
 UNICODE_STRING g_RegistryPath;      // This is used to store the registry settings path for the driver
 
-
-#ifdef SYSVAD_BTH_BYPASS
-//
-// This driver listens for arrival/removal of the bth sco bypass interfaces by 
-// default. Use the registry value DisableBthScoBypass (DWORD) > 0 to override 
-// this default.
-//
-DWORD g_DisableBthScoBypass = 0;   // default is SCO bypass enabled.
-#endif // SYSVAD_BTH_BYPASS
-
-#ifdef SYSVAD_USB_SIDEBAND
-//
-// This driver listens for arrival/removal of the USB Sideband interfaces by 
-// default. Use the registry value DisableUsbSideband (DWORD) > 0 to override 
-// this default.
-//
-DWORD g_DisableUsbSideband = 0;   // default is USB bypass enabled.
-#endif // SYSVAD_USB_SIDEBAND
-
-#ifdef SYSVAD_A2DP_SIDEBAND
-//
-// This driver listens for arrival/removal of the Bluetooth A2DP Sideband interfaces by 
-// default. Use the registry value DisableA2dpSideband (DWORD) > 0 to override 
-// this default.
-//
-DWORD g_DisableA2dpSideband = 0; // default is A2DP bypass enabled.
-#endif
+// NOTE: SoundStageRouterVirtualAudio exposes only the internal Speaker render
+// endpoint (see minipairs.h). Upstream SysVAD's Bluetooth SCO/A2DP and USB
+// sideband bypass endpoints (guarded by SYSVAD_BTH_BYPASS/SYSVAD_USB_SIDEBAND/
+// SYSVAD_A2DP_SIDEBAND, none of which are defined by this project) and their
+// associated globals have been removed rather than left as dead #ifdef code.
 
 //-----------------------------------------------------------------------------
 // Functions
@@ -643,13 +625,6 @@ Return Value:
     DPF(D_TERSE, ("[AddDevice]"));
 
     maxObjects = g_MaxMiniports;
-
-#ifdef SYSVAD_BTH_BYPASS
-    maxObjects += g_MaxBthHfpMiniports; 
-#endif // SYSVAD_BTH_BYPASS
-#ifdef SYSVAD_USB_SIDEBAND
-    maxObjects += g_MaxUsbHsMiniports; 
-#endif // SYSVAD_USB_SIDEBAND
 
     // Tell the class driver to add the device.
     //
