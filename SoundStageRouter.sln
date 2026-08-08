@@ -4,6 +4,8 @@ VisualStudioVersion = 18.0.0.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SoundStageRouter", "SoundStageRouter.vcxproj", "{CEB8626D-3E68-4D51-973E-78D2AF505657}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SoundStageRouter.Tests", "SoundStageRouter.Tests.vcxproj", "{93A64544-B10B-4DC5-B52E-B19B2655AF10}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -14,6 +16,10 @@ Global
 		{CEB8626D-3E68-4D51-973E-78D2AF505657}.Debug|x64.Build.0 = Debug|x64
 		{CEB8626D-3E68-4D51-973E-78D2AF505657}.Release|x64.ActiveCfg = Release|x64
 		{CEB8626D-3E68-4D51-973E-78D2AF505657}.Release|x64.Build.0 = Release|x64
+		{93A64544-B10B-4DC5-B52E-B19B2655AF10}.Debug|x64.ActiveCfg = Debug|x64
+		{93A64544-B10B-4DC5-B52E-B19B2655AF10}.Debug|x64.Build.0 = Debug|x64
+		{93A64544-B10B-4DC5-B52E-B19B2655AF10}.Release|x64.ActiveCfg = Release|x64
+		{93A64544-B10B-4DC5-B52E-B19B2655AF10}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
