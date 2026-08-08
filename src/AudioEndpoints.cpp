@@ -37,7 +37,8 @@ namespace
         return result;
     }
 
-    std::wstring GetFriendlyName(IMMDevice* device)
+    std::wstring GetPropertyString(IMMDevice* device, const PROPERTYKEY& key,
+                                   const wchar_t* fallback)
     {
         ComPtr<IPropertyStore> properties;
         ThrowIfFailed(device->OpenPropertyStore(STGM_READ, properties.GetAddressOf()),
@@ -45,10 +46,10 @@ namespace
 
         PROPVARIANT value;
         PropVariantInit(&value);
-        ThrowIfFailed(properties->GetValue(PKEY_Device_FriendlyName, &value),
+        ThrowIfFailed(properties->GetValue(key, &value),
                       "IPropertyStore::GetValue");
 
-        std::wstring result = L"Unnamed audio device";
+        std::wstring result = fallback;
         if (value.vt == VT_LPWSTR && value.pwszVal != nullptr)
         {
             result = value.pwszVal;
@@ -150,9 +151,13 @@ namespace soundstage
 
             AudioEndpoint endpoint;
             endpoint.id = GetDeviceId(device.Get());
-            endpoint.name = GetFriendlyName(device.Get());
+            endpoint.name = GetPropertyString(
+                device.Get(), PKEY_Device_FriendlyName,
+                L"Unnamed audio device");
+            const std::wstring interfaceName = GetPropertyString(
+                device.Get(), PKEY_DeviceInterface_FriendlyName, L"");
             endpoint.isVirtualEndpoint =
-                endpoint.name == L"SoundStage Router 5.1";
+                interfaceName == L"SoundStage Router 5.1";
             endpoint.isDefault = endpoint.id == defaultDeviceId;
             PopulateFormat(device.Get(), endpoint);
             endpoint.virtualContractValid =

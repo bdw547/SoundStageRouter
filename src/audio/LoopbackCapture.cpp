@@ -155,7 +155,7 @@ namespace soundstage::audio
             PROPVARIANT name;
             PropVariantInit(&name);
             const HRESULT nameResult = properties->GetValue(
-                PKEY_Device_FriendlyName, &name);
+                PKEY_DeviceInterface_FriendlyName, &name);
             const bool matching =
                 SUCCEEDED(nameResult) && name.vt == VT_LPWSTR &&
                 name.pwszVal != nullptr &&

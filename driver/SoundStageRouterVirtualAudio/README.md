@@ -92,13 +92,15 @@ Note: `infverif /provider 'SoundStage Router Project'` crashed on this machine's
 
 Do **not** run these from a normal shell; both require admin elevation.
 
-Install (stages trust + `pnputil /add-driver /install` only when `-Force` is supplied):
+Install (trusts the test certificate, then uses WDK `devcon install` to create
+the required root-enumerated device node):
 
 ```powershell
 Start-Process PowerShell -Verb RunAs -ArgumentList '-ExecutionPolicy Bypass -File .\driver\SoundStageRouterVirtualAudio\scripts\Install-SoundStageRouterDriver.ps1 -Force'
 ```
 
-Uninstall (finds the installed `oemNN.inf` entry, then calls `pnputil /delete-driver /uninstall /force` only when `-Force` is supplied):
+Uninstall (finds the device's published `oemNN.inf` through CIM, removes the
+root device with `devcon`, then removes the driver-store package):
 
 ```powershell
 Start-Process PowerShell -Verb RunAs -ArgumentList '-ExecutionPolicy Bypass -File .\driver\SoundStageRouterVirtualAudio\scripts\Uninstall-SoundStageRouterDriver.ps1 -Force'
@@ -116,7 +118,8 @@ bcdedit /set testsigning on
 
 A reboot is required after changing that setting. This repo does **not** enable TESTSIGNING automatically.
 
-`devcon` remains optional for diagnostics (`devcon status`, `devcon rescan`, `devcon remove`), but `pnputil` is the primary supported install/uninstall path in these scripts.
+The WDK `devcon.exe` tool is required because `pnputil /add-driver /install`
+cannot create a new root-enumerated device node.
 
 ## Production-signing limitation
 
