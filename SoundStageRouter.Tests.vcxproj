@@ -37,10 +37,12 @@
   <ItemGroup>
     <ClCompile Include="tests\TestMain.cpp" />
     <ClCompile Include="tests\audio\AudioTypesTests.cpp" />
+    <ClCompile Include="tests\audio\AdaptiveResamplerTests.cpp" />
     <ClCompile Include="tests\audio\DelayLineTests.cpp" />
     <ClCompile Include="tests\audio\TestPatternGeneratorTests.cpp" />
     <ClCompile Include="src\audio\TestPatternGenerator.cpp" />
     <ClCompile Include="src\audio\DelayLine.cpp" />
+    <ClCompile Include="src\audio\AdaptiveResampler.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
