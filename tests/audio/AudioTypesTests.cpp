@@ -16,3 +16,8 @@ TEST(AudioTypes_ConvertsMillisecondsOnTheMasterTimeline)
     EXPECT_EQ(MillisecondsToFrames(10), 480ull);
     EXPECT_EQ(MillisecondsToFrames(2000), 96000ull);
 }
+
+TEST(AudioTypes_DefaultConfigurationReferencesRear)
+{
+    EXPECT_EQ(RunConfiguration{}.clockReferenceRole, SpeakerRole::Rear);
+}

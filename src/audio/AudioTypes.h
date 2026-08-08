@@ -29,6 +29,7 @@ namespace soundstage::audio
     struct RunConfiguration
     {
         TestPattern pattern = TestPattern::PairedClicks;
+        SpeakerRole clockReferenceRole = SpeakerRole::Rear;
         std::vector<EndpointRoute> routes;
     };
 
