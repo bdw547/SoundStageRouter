@@ -6,8 +6,6 @@ namespace soundstage::audio
 {
     namespace
     {
-        constexpr double MinimumNominalRatio = 0.25;
-        constexpr double MaximumNominalRatio = 4.0;
         constexpr double MaximumCorrectionSlewPpmPerSecond = 50.0;
     }
 
@@ -67,8 +65,6 @@ namespace soundstage::audio
 
     double AdaptiveResampler::ClampNominalRatio(const double ratio) noexcept
     {
-        return std::isfinite(ratio)
-            ? std::clamp(ratio, MinimumNominalRatio, MaximumNominalRatio)
-            : 1.0;
+        return std::isfinite(ratio) && ratio > 0.0 ? ratio : 1.0;
     }
 }

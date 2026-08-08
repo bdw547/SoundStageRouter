@@ -2,6 +2,7 @@
 #include "../../src/audio/AdaptiveResampler.h"
 #include <array>
 #include <cmath>
+#include <limits>
 
 using namespace soundstage::audio;
 
@@ -108,16 +109,46 @@ TEST(Resampler_RemainsContinuousAcrossRenderBlocks)
     EXPECT_TRUE(second.front().left - first.back().left < 1.1f);
 }
 
-TEST(Resampler_InvalidNominalRatioPreservesForwardProgress)
+TEST(Resampler_PreservesFinitePositiveNominalRatios)
 {
-    RampSource source;
-    AdaptiveResampler resampler;
-    resampler.Reset(1.0, source);
-    resampler.SetNominalRatio(0.0);
-    std::array<StereoFrame, 2> output{};
+    for (const double ratio : { 0.125, 8.0 })
+    {
+        RampSource resetSource;
+        AdaptiveResampler resetResampler;
+        std::array<StereoFrame, 2> resetOutput{};
+        resetResampler.Reset(ratio, resetSource);
+        resetResampler.Render(resetOutput, resetSource);
+        EXPECT_NEAR(resetOutput[1].left, ratio, 1e-6);
 
-    resampler.Render(output, source);
+        RampSource setterSource;
+        AdaptiveResampler setterResampler;
+        std::array<StereoFrame, 2> setterOutput{};
+        setterResampler.Reset(1.0, setterSource);
+        setterResampler.SetNominalRatio(ratio);
+        setterResampler.Render(setterOutput, setterSource);
+        EXPECT_NEAR(setterOutput[1].left, ratio, 1e-6);
+    }
+}
 
-    EXPECT_TRUE(std::isfinite(output[1].left));
-    EXPECT_TRUE(output[1].left > output[0].left);
+TEST(Resampler_InvalidNominalRatiosFallBackToUnity)
+{
+    for (const double ratio : { 0.0, -1.0,
+                                std::numeric_limits<double>::quiet_NaN(),
+                                std::numeric_limits<double>::infinity() })
+    {
+        RampSource resetSource;
+        AdaptiveResampler resetResampler;
+        std::array<StereoFrame, 2> resetOutput{};
+        resetResampler.Reset(ratio, resetSource);
+        resetResampler.Render(resetOutput, resetSource);
+        EXPECT_NEAR(resetOutput[1].left, 1.0, 1e-6);
+
+        RampSource setterSource;
+        AdaptiveResampler setterResampler;
+        std::array<StereoFrame, 2> setterOutput{};
+        setterResampler.Reset(1.0, setterSource);
+        setterResampler.SetNominalRatio(ratio);
+        setterResampler.Render(setterOutput, setterSource);
+        EXPECT_NEAR(setterOutput[1].left, 1.0, 1e-6);
+    }
 }
