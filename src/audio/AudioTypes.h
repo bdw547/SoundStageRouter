@@ -11,12 +11,23 @@ namespace soundstage::audio
     inline constexpr double MaximumCorrectionPpm = 500.0;
 
     enum class SpeakerRole { Front, Rear };
+    enum class PlaybackMode { SystemAudio, TestSignals };
+    enum class RearFillMode { Off, Duplicate, Ambient };
     enum class TestPattern { PairedClicks, AlternatingClicks, FrontTone, RearTone };
     enum class PlaybackState { Stopped, Preparing, Primed, Running, Stopping, Faulted };
     enum class ClockHealth { Settling, Active, Unavailable };
 
     struct StereoFrame { float left = 0.0f; float right = 0.0f; };
     struct RoleFrame { StereoFrame front{}; StereoFrame rear{}; };
+    struct SurroundFrame
+    {
+        float frontLeft = 0.0f;
+        float frontRight = 0.0f;
+        float frontCenter = 0.0f;
+        float lfe = 0.0f;
+        float backLeft = 0.0f;
+        float backRight = 0.0f;
+    };
 
     struct EndpointRoute
     {
@@ -28,7 +39,10 @@ namespace soundstage::audio
 
     struct RunConfiguration
     {
+        PlaybackMode mode = PlaybackMode::TestSignals;
+        RearFillMode rearFill = RearFillMode::Off;
         TestPattern pattern = TestPattern::PairedClicks;
+        std::wstring virtualEndpointId;
         SpeakerRole clockReferenceRole = SpeakerRole::Rear;
         std::vector<EndpointRoute> routes;
     };
@@ -70,6 +84,9 @@ namespace soundstage::audio
         double relativePpm = 0.0;
         double correctionPpm = 0.0;
         std::array<EndpointTelemetry, 2> endpoints{};
+        bool virtualEndpointReady = false;
+        std::uint64_t captureOverflowCount = 0;
+        std::uint64_t captureUnderrunCount = 0;
         EngineFault lastFault{};
     };
 

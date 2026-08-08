@@ -3,8 +3,8 @@
 Use this protocol only after the synchronized playback software checks pass.
 It requires the target Realtek front output, Bluetooth rear output, one
 stationary microphone, and an external recorder or separate recording
-application. SoundStage Router and the analyzer never capture microphone or
-system audio.
+application. SoundStage Router does not capture the microphone; system mode
+does loopback-capture only the SoundStage Router 5.1 virtual render endpoint.
 
 ## Setup
 
@@ -16,6 +16,28 @@ system audio.
    not move it until both recordings are complete.
 4. Configure the external recorder for uncompressed 48,000 Hz PCM16 or
    IEEE float32 WAV, mono or stereo.
+
+## System-audio routing acceptance
+
+1. Install the driver by its documented procedure and verify exactly one
+   **SoundStage Router 5.1** endpoint reports 48 kHz, float32, six channels,
+   mask FL/FR/FC/LFE/BL/BR.
+2. Set that endpoint as the Windows default output. In the app select **System
+   audio (virtual 5.1)**, Front and Rear physical devices, and rear fill Off.
+3. Start routing and play a known six-channel channel-identification file from
+   an ordinary shared-mode Windows application. Verify FL/FR/FC/LFE reach only
+   the front pair according to the documented mix and BL/BR reach the rear
+   pair with correct left/right orientation.
+4. Play stereo content and verify rear fill Off is silent at the rear, Duplicate
+   produces rear stereo at -6 dB, and Ambient produces difference ambience.
+   Repeat with native BL/BR content and verify native rear replaces fill.
+5. Confirm choosing the virtual endpoint as a physical output is impossible.
+   Disconnect each physical endpoint in turn, then invalidate/remove the
+   virtual endpoint; each event must stop both outputs and require a manual
+   restart.
+6. Keep diverse system playback running for 30 minutes. Record overflow,
+   underrun, clock-correction, and audible-glitch observations. The app must
+   remain open throughout.
 
 ## Start recording
 

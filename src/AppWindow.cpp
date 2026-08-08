@@ -24,6 +24,8 @@ namespace
     constexpr int PatternComboId = 1008;
     constexpr int StartButtonId = 1009;
     constexpr int StopButtonId = 1010;
+    constexpr int ModeComboId = 1011;
+    constexpr int RearFillComboId = 1012;
     constexpr UINT_PTR StatusTimerId = 1;
     constexpr UINT StatusTimerPeriodMs = 250;
 
@@ -153,6 +155,12 @@ namespace soundstage
             LayoutControls(LOWORD(lParam), HIWORD(lParam));
             return 0;
         case WM_COMMAND:
+            if (LOWORD(wParam) == ModeComboId &&
+                HIWORD(wParam) == CBN_SELCHANGE)
+            {
+                UpdateModeControls();
+                return 0;
+            }
             if (HIWORD(wParam) == EN_CHANGE && coordinator_ &&
                 coordinator_->Status()->state == audio::PlaybackState::Running)
             {
@@ -258,6 +266,32 @@ namespace soundstage
             WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
             0, 0, 0, 0, window_, ControlId(PatternComboId),
             instance_, nullptr);
+        modeLabel_ = CreateLabel(window_, L"Source mode");
+        modeCombo_ = CreateWindowExW(
+            WS_EX_CLIENTEDGE, L"COMBOBOX", L"",
+            WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+            0, 0, 0, 0, window_, ControlId(ModeComboId),
+            instance_, nullptr);
+        ComboBox_AddString(modeCombo_, L"System audio (virtual 5.1)");
+        ComboBox_AddString(modeCombo_, L"Test signals");
+        ComboBox_SetCurSel(
+            modeCombo_,
+            settings_.mode == audio::PlaybackMode::SystemAudio ? 0 : 1);
+        rearFillLabel_ = CreateLabel(window_, L"Rear fill");
+        rearFillCombo_ = CreateWindowExW(
+            WS_EX_CLIENTEDGE, L"COMBOBOX", L"",
+            WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
+            0, 0, 0, 0, window_, ControlId(RearFillComboId),
+            instance_, nullptr);
+        ComboBox_AddString(rearFillCombo_, L"Off");
+        ComboBox_AddString(rearFillCombo_, L"Duplicate (-6 dB)");
+        ComboBox_AddString(rearFillCombo_, L"Ambient difference");
+        ComboBox_SetCurSel(
+            rearFillCombo_, static_cast<int>(settings_.rearFill));
+        virtualStatus_ = CreateLabel(
+            window_,
+            L"Driver status: checking. Set Windows default output to "
+            L"SoundStage Router 5.1.");
         for (const wchar_t* pattern : {
                  L"Paired clicks", L"Alternating clicks",
                  L"Front tone", L"Rear tone"})
@@ -274,12 +308,12 @@ namespace soundstage
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
             0, 0, 0, 0, window_, ControlId(SaveButtonId), instance_, nullptr);
         startButton_ = CreateWindowExW(
-            0, L"BUTTON", L"Start test",
+            0, L"BUTTON", L"Start Routing",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
             0, 0, 0, 0, window_, ControlId(StartButtonId),
             instance_, nullptr);
         stopButton_ = CreateWindowExW(
-            0, L"BUTTON", L"Stop",
+            0, L"BUTTON", L"Stop Routing",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
             0, 0, 0, 0, window_, ControlId(StopButtonId),
             instance_, nullptr);
@@ -294,6 +328,8 @@ namespace soundstage
                  title_, subtitle_, deviceList_,
                  frontLabel_, frontCombo_, frontDelayLabel_, frontDelay_,
                  rearLabel_, rearCombo_, rearDelayLabel_, rearDelay_,
+                 modeLabel_, modeCombo_, rearFillLabel_, rearFillCombo_,
+                 virtualStatus_,
                  patternLabel_, patternCombo_, refreshButton_, saveButton_,
                  startButton_, stopButton_, frontStatus_, rearStatus_,
                  syncStatus_, status_})
@@ -306,6 +342,8 @@ namespace soundstage
         ApplyFont(frontStatus_, smallFont_);
         ApplyFont(rearStatus_, smallFont_);
         ApplyFont(syncStatus_, smallFont_);
+        ApplyFont(virtualStatus_, smallFont_);
+        UpdateModeControls();
     }
 
     void AppWindow::LayoutControls(const int width, const int height) const
@@ -315,35 +353,42 @@ namespace soundstage
         MoveWindow(title_, margin, 22, contentWidth, 36, TRUE);
         MoveWindow(subtitle_, margin, 59, contentWidth, 24, TRUE);
         MoveWindow(deviceList_, margin, 94, contentWidth,
-                   std::max(150, height - 520), TRUE);
+                   std::max(120, height - 590), TRUE);
 
-        const int formTop = std::max(265, height - 410);
+        const int formTop = std::max(230, height - 480);
         const int delayWidth = 100;
         const int gap = 16;
         const int comboWidth = contentWidth - delayWidth - gap;
 
-        MoveWindow(frontLabel_, margin, formTop, comboWidth, 23, TRUE);
-        MoveWindow(frontDelayLabel_, margin + comboWidth + gap, formTop,
+        MoveWindow(modeLabel_, margin, formTop, 240, 23, TRUE);
+        MoveWindow(modeCombo_, margin, formTop + 24, 300, 180, TRUE);
+        MoveWindow(rearFillLabel_, margin + 320, formTop, 240, 23, TRUE);
+        MoveWindow(rearFillCombo_, margin + 320, formTop + 24, 260, 180, TRUE);
+        MoveWindow(virtualStatus_, margin, formTop + 57, contentWidth, 23, TRUE);
+
+        const int routesTop = formTop + 88;
+        MoveWindow(frontLabel_, margin, routesTop, comboWidth, 23, TRUE);
+        MoveWindow(frontDelayLabel_, margin + comboWidth + gap, routesTop,
                    delayWidth, 23, TRUE);
-        MoveWindow(rearLabel_, margin, formTop + 62, comboWidth, 23, TRUE);
-        MoveWindow(rearDelayLabel_, margin + comboWidth + gap, formTop + 62,
+        MoveWindow(rearLabel_, margin, routesTop + 62, comboWidth, 23, TRUE);
+        MoveWindow(rearDelayLabel_, margin + comboWidth + gap, routesTop + 62,
                    delayWidth, 23, TRUE);
 
-        MoveWindow(frontCombo_, margin, formTop + 25, comboWidth, 220, TRUE);
-        MoveWindow(frontDelay_, margin + comboWidth + gap, formTop + 25, delayWidth, 30, TRUE);
-        MoveWindow(rearCombo_, margin, formTop + 87, comboWidth, 220, TRUE);
-        MoveWindow(rearDelay_, margin + comboWidth + gap, formTop + 87,
+        MoveWindow(frontCombo_, margin, routesTop + 25, comboWidth, 220, TRUE);
+        MoveWindow(frontDelay_, margin + comboWidth + gap, routesTop + 25, delayWidth, 30, TRUE);
+        MoveWindow(rearCombo_, margin, routesTop + 87, comboWidth, 220, TRUE);
+        MoveWindow(rearDelay_, margin + comboWidth + gap, routesTop + 87,
                    delayWidth, 30, TRUE);
-        MoveWindow(patternLabel_, margin, formTop + 126, 240, 23, TRUE);
-        MoveWindow(patternCombo_, margin, formTop + 151, 260, 180, TRUE);
-        MoveWindow(refreshButton_, margin, formTop + 198, 150, 36, TRUE);
-        MoveWindow(saveButton_, margin + 162, formTop + 198, 140, 36, TRUE);
-        MoveWindow(startButton_, margin + 314, formTop + 198, 140, 36, TRUE);
-        MoveWindow(stopButton_, margin + 466, formTop + 198, 110, 36, TRUE);
-        MoveWindow(frontStatus_, margin, formTop + 246, contentWidth, 22, TRUE);
-        MoveWindow(rearStatus_, margin, formTop + 270, contentWidth, 22, TRUE);
-        MoveWindow(syncStatus_, margin, formTop + 294, contentWidth, 22, TRUE);
-        MoveWindow(status_, margin, formTop + 322, contentWidth, 25, TRUE);
+        MoveWindow(patternLabel_, margin, routesTop + 126, 240, 23, TRUE);
+        MoveWindow(patternCombo_, margin, routesTop + 151, 260, 180, TRUE);
+        MoveWindow(refreshButton_, margin, routesTop + 198, 150, 36, TRUE);
+        MoveWindow(saveButton_, margin + 162, routesTop + 198, 140, 36, TRUE);
+        MoveWindow(startButton_, margin + 314, routesTop + 198, 140, 36, TRUE);
+        MoveWindow(stopButton_, margin + 466, routesTop + 198, 130, 36, TRUE);
+        MoveWindow(frontStatus_, margin, routesTop + 246, contentWidth, 22, TRUE);
+        MoveWindow(rearStatus_, margin, routesTop + 270, contentWidth, 22, TRUE);
+        MoveWindow(syncStatus_, margin, routesTop + 294, contentWidth, 22, TRUE);
+        MoveWindow(status_, margin, routesTop + 322, contentWidth, 25, TRUE);
     }
 
     void AppWindow::RefreshDevices()
@@ -369,6 +414,44 @@ namespace soundstage
             {
                 status +=
                     L" Settings contained invalid values; supported defaults were applied.";
+            }
+            const auto virtualCount = std::count_if(
+                endpoints_.begin(), endpoints_.end(),
+                [](const AudioEndpoint& endpoint) {
+                    return endpoint.isVirtualEndpoint;
+                });
+            const auto validVirtualCount = std::count_if(
+                endpoints_.begin(), endpoints_.end(),
+                [](const AudioEndpoint& endpoint) {
+                    return endpoint.virtualContractValid;
+                });
+            if (virtualCount == 0)
+            {
+                SetWindowTextW(
+                    virtualStatus_,
+                    L"Driver status: missing. Install the virtual driver, "
+                    L"then set Windows default output to SoundStage Router 5.1.");
+            }
+            else if (virtualCount > 1)
+            {
+                SetWindowTextW(
+                    virtualStatus_,
+                    L"Driver status: duplicate virtual endpoints found. "
+                    L"Remove the duplicate before routing.");
+            }
+            else if (validVirtualCount != 1)
+            {
+                SetWindowTextW(
+                    virtualStatus_,
+                    L"Driver status: wrong virtual format; expected "
+                    L"48 kHz float32 6-channel FL/FR/FC/LFE/BL/BR.");
+            }
+            else
+            {
+                SetWindowTextW(
+                    virtualStatus_,
+                    L"Driver status: ready. Windows default output must be "
+                    L"SoundStage Router 5.1; keep this app running.");
             }
             SetStatus(status);
         }
@@ -399,17 +482,32 @@ namespace soundstage
             SetListCell(deviceList_, static_cast<int>(index), 2,
                         endpoint.isDefault ? L"Default" : L"Available");
 
-            ComboBox_AddString(frontCombo_, endpoint.name.c_str());
-            ComboBox_AddString(rearCombo_, endpoint.name.c_str());
-            ComboBox_SetItemData(
-                frontCombo_, static_cast<int>(index),
-                static_cast<LPARAM>(index));
-            ComboBox_SetItemData(
-                rearCombo_, static_cast<int>(index),
-                static_cast<LPARAM>(index));
+            if (!endpoint.isVirtualEndpoint)
+            {
+                const int frontItem =
+                    ComboBox_AddString(frontCombo_, endpoint.name.c_str());
+                const int rearItem =
+                    ComboBox_AddString(rearCombo_, endpoint.name.c_str());
+                ComboBox_SetItemData(
+                    frontCombo_, frontItem, static_cast<LPARAM>(index));
+                ComboBox_SetItemData(
+                    rearCombo_, rearItem, static_cast<LPARAM>(index));
+            }
         }
 
-        int frontSelection = FindEndpoint(settings_.frontEndpointId);
+        const auto selectEndpoint = [](const HWND combo, const int endpoint) {
+            const int count = ComboBox_GetCount(combo);
+            for (int item = 0; item < count; ++item)
+            {
+                if (ComboBox_GetItemData(combo, item) == endpoint)
+                {
+                    return item;
+                }
+            }
+            return -1;
+        };
+        int frontEndpoint = FindEndpoint(settings_.frontEndpointId);
+        int frontSelection = selectEndpoint(frontCombo_, frontEndpoint);
         if (frontSelection < 0 && !settings_.frontEndpointId.empty())
         {
             frontSelection = ComboBox_AddString(
@@ -419,13 +517,17 @@ namespace soundstage
         else if (frontSelection < 0)
         {
             const auto defaultDevice = std::find_if(endpoints_.begin(), endpoints_.end(),
-                [](const AudioEndpoint& endpoint) { return endpoint.isDefault; });
+                [](const AudioEndpoint& endpoint) {
+                    return endpoint.isDefault && !endpoint.isVirtualEndpoint;
+                });
             frontSelection = defaultDevice == endpoints_.end()
-                ? (endpoints_.empty() ? -1 : 0)
-                : static_cast<int>(std::distance(endpoints_.begin(), defaultDevice));
+                ? (ComboBox_GetCount(frontCombo_) == 0 ? -1 : 0)
+                : selectEndpoint(frontCombo_, static_cast<int>(
+                    std::distance(endpoints_.begin(), defaultDevice)));
         }
 
-        int rearSelection = FindEndpoint(settings_.rearEndpointId);
+        int rearEndpoint = FindEndpoint(settings_.rearEndpointId);
+        int rearSelection = selectEndpoint(rearCombo_, rearEndpoint);
         if (rearSelection < 0 && !settings_.rearEndpointId.empty())
         {
             rearSelection = ComboBox_AddString(
@@ -434,11 +536,12 @@ namespace soundstage
         }
         else if (rearSelection < 0)
         {
-            for (std::size_t index = 0; index < endpoints_.size(); ++index)
+            for (int item = 0; item < ComboBox_GetCount(rearCombo_); ++item)
             {
-                if (static_cast<int>(index) != frontSelection)
+                if (ComboBox_GetItemData(rearCombo_, item) !=
+                    ComboBox_GetItemData(frontCombo_, frontSelection))
                 {
-                    rearSelection = static_cast<int>(index);
+                    rearSelection = item;
                     break;
                 }
             }
@@ -475,6 +578,13 @@ namespace soundstage
         settings_.lastPattern = pattern >= 0 && pattern <= 3
             ? static_cast<audio::TestPattern>(pattern)
             : audio::TestPattern::PairedClicks;
+        settings_.mode = ComboBox_GetCurSel(modeCombo_) == 1
+            ? audio::PlaybackMode::TestSignals
+            : audio::PlaybackMode::SystemAudio;
+        const int rearFill = ComboBox_GetCurSel(rearFillCombo_);
+        settings_.rearFill = rearFill >= 0 && rearFill <= 2
+            ? static_cast<audio::RearFillMode>(rearFill)
+            : audio::RearFillMode::Off;
 
         try
         {
@@ -505,6 +615,8 @@ namespace soundstage
         settings_.rearDelayMs = static_cast<int>(
             configuration->routes[1].delayMs);
         settings_.lastPattern = configuration->pattern;
+        settings_.mode = configuration->mode;
+        settings_.rearFill = configuration->rearFill;
         try
         {
             settingsStore_.Save(settings_);
@@ -516,7 +628,9 @@ namespace soundstage
             return;
         }
         SetPlaybackControlsEnabled(false);
-        SetStatus(L"Preparing synchronized test playback...");
+        SetStatus(configuration->mode == audio::PlaybackMode::SystemAudio
+            ? L"Preparing physical outputs, then virtual loopback capture..."
+            : L"Preparing synchronized test playback...");
         try
         {
             coordinator_->PostStart(std::move(*configuration));
@@ -552,6 +666,45 @@ namespace soundstage
         }
 
         audio::RunConfiguration configuration;
+        configuration.mode = ComboBox_GetCurSel(modeCombo_) == 1
+            ? audio::PlaybackMode::TestSignals
+            : audio::PlaybackMode::SystemAudio;
+        const int rearFill = ComboBox_GetCurSel(rearFillCombo_);
+        configuration.rearFill = rearFill >= 0 && rearFill <= 2
+            ? static_cast<audio::RearFillMode>(rearFill)
+            : audio::RearFillMode::Off;
+        if (endpoints_[frontIndex].isVirtualEndpoint ||
+            endpoints_[rearIndex].isVirtualEndpoint)
+        {
+            MessageBoxW(
+                window_, L"The virtual endpoint cannot be a physical output.",
+                L"Feedback prevented", MB_OK | MB_ICONWARNING);
+            return std::nullopt;
+        }
+        if (configuration.mode == audio::PlaybackMode::SystemAudio)
+        {
+            const auto virtualEndpoint = std::find_if(
+                endpoints_.begin(), endpoints_.end(),
+                [](const AudioEndpoint& endpoint) {
+                    return endpoint.virtualContractValid;
+                });
+            const auto count = std::count_if(
+                endpoints_.begin(), endpoints_.end(),
+                [](const AudioEndpoint& endpoint) {
+                    return endpoint.isVirtualEndpoint;
+                });
+            if (count != 1 || virtualEndpoint == endpoints_.end())
+            {
+                MessageBoxW(
+                    window_,
+                    L"SoundStage Router 5.1 is missing, duplicated, or has "
+                    L"the wrong 6-channel 48 kHz float format.",
+                    L"Virtual driver unavailable",
+                    MB_OK | MB_ICONWARNING);
+                return std::nullopt;
+            }
+            configuration.virtualEndpointId = virtualEndpoint->id;
+        }
         const int pattern = ComboBox_GetCurSel(patternCombo_);
         configuration.pattern = pattern >= 0 && pattern <= 3
             ? static_cast<audio::TestPattern>(pattern)
@@ -612,6 +765,13 @@ namespace soundstage
              << engineStatus.relativePpm << L" ppm"
              << L" | correction " << engineStatus.correctionPpm
              << L" ppm";
+        if (engineStatus.virtualEndpointReady)
+        {
+            sync << L" | capture overflow "
+                << engineStatus.captureOverflowCount
+                << L", source underrun "
+                << engineStatus.captureUnderrunCount;
+        }
         if (engineStatus.lastFault.code != 0)
         {
             sync << L" | "
@@ -620,12 +780,27 @@ namespace soundstage
         SetWindowTextW(syncStatus_, sync.str().c_str());
     }
 
+    void AppWindow::UpdateModeControls() const
+    {
+        const bool system =
+            ComboBox_GetCurSel(modeCombo_) != 1;
+        ShowWindow(patternLabel_, system ? SW_HIDE : SW_SHOW);
+        ShowWindow(patternCombo_, system ? SW_HIDE : SW_SHOW);
+        ShowWindow(rearFillLabel_, system ? SW_SHOW : SW_HIDE);
+        ShowWindow(rearFillCombo_, system ? SW_SHOW : SW_HIDE);
+        ShowWindow(virtualStatus_, system ? SW_SHOW : SW_HIDE);
+        SetWindowTextW(
+            startButton_, system ? L"Start Routing" : L"Start Test");
+    }
+
     void AppWindow::SetPlaybackControlsEnabled(
         const bool selectable) const
     {
         EnableWindow(frontCombo_, selectable);
         EnableWindow(rearCombo_, selectable);
         EnableWindow(patternCombo_, selectable);
+        EnableWindow(modeCombo_, selectable);
+        EnableWindow(rearFillCombo_, selectable);
         EnableWindow(refreshButton_, selectable);
         EnableWindow(saveButton_, selectable);
         EnableWindow(startButton_, selectable);

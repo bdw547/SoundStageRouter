@@ -43,6 +43,7 @@ namespace soundstage::audio
         void PublishStatus();
 
         std::unique_ptr<IEndpointSessionFactory> factory_;
+        std::unique_ptr<ILoopbackCaptureFactory> captureFactory_;
         std::unique_ptr<EngineController> engine_;
         mutable std::mutex mutex_;
         std::condition_variable condition_;

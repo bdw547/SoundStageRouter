@@ -5,6 +5,62 @@
 using namespace soundstage::audio;
 using namespace test_audio;
 
+namespace
+{
+    struct FakeCaptureState
+    {
+        SessionResult prepareResult = SessionResult::Success();
+        SessionResult startResult = SessionResult::Success();
+        CaptureTelemetry telemetry{true, true, 0, 0, 0};
+        unsigned prepareCalls = 0;
+        unsigned startCalls = 0;
+        unsigned stopCalls = 0;
+    };
+
+    class FakeCapture final : public ILoopbackCapture
+    {
+    public:
+        explicit FakeCapture(FakeCaptureState& state) : state_(state) {}
+        SessionResult Prepare(
+            MasterFrameRingBuffer&, RearFillMode,
+            std::stop_token) override
+        {
+            ++state_.prepareCalls;
+            return state_.prepareResult;
+        }
+        SessionResult Start() override
+        {
+            ++state_.startCalls;
+            return state_.startResult;
+        }
+        CaptureTelemetry Snapshot() noexcept override
+        {
+            return state_.telemetry;
+        }
+        void Stop() noexcept override { ++state_.stopCalls; }
+    private:
+        FakeCaptureState& state_;
+    };
+
+    class FakeCaptureFactory final : public ILoopbackCaptureFactory
+    {
+    public:
+        std::unique_ptr<ILoopbackCapture> Create() override
+        {
+            return std::make_unique<FakeCapture>(state);
+        }
+        FakeCaptureState state;
+    };
+
+    RunConfiguration ValidSystemConfiguration()
+    {
+        RunConfiguration configuration = ValidRunConfiguration();
+        configuration.mode = PlaybackMode::SystemAudio;
+        configuration.virtualEndpointId = L"fake-virtual";
+        return configuration;
+    }
+}
+
 TEST(Engine_RejectsInvalidRouteConfigurations)
 {
     FakeEndpointSessionFactory factory;
@@ -142,4 +198,43 @@ TEST(Engine_ForwardsClampedLiveDelay)
     EXPECT_TRUE(engine.Start(ValidRunConfiguration(), {}).ok);
     engine.SetDelayMs(SpeakerRole::Front, 9000);
     EXPECT_EQ(factory.Session(SpeakerRole::Front).lastDelayMs, MaximumDelayMs);
+}
+
+TEST(Engine_SystemModeStartsCaptureAfterOutputsArePrimed)
+{
+    FakeEndpointSessionFactory outputs;
+    FakeCaptureFactory captures;
+    EngineController engine(outputs, &captures);
+    EXPECT_TRUE(engine.Start(ValidSystemConfiguration(), {}).ok);
+    EXPECT_EQ(outputs.Session(SpeakerRole::Front).primeCalls.load(), 1u);
+    EXPECT_EQ(outputs.Session(SpeakerRole::Rear).primeCalls.load(), 1u);
+    EXPECT_EQ(captures.state.prepareCalls, 1u);
+    EXPECT_EQ(captures.state.startCalls, 1u);
+    engine.Stop();
+    EXPECT_EQ(captures.state.stopCalls, 1u);
+}
+
+TEST(Engine_CaptureFaultStopsBothPhysicalOutputs)
+{
+    FakeEndpointSessionFactory outputs;
+    FakeCaptureFactory captures;
+    EngineController engine(outputs, &captures);
+    EXPECT_TRUE(engine.Start(ValidSystemConfiguration(), {}).ok);
+    captures.state.telemetry.faultCode = 1234;
+    engine.Tick(10'000'000);
+    EXPECT_EQ(engine.Status().state, PlaybackState::Faulted);
+    EXPECT_EQ(outputs.Session(SpeakerRole::Front).stopCalls.load(), 1u);
+    EXPECT_EQ(outputs.Session(SpeakerRole::Rear).stopCalls.load(), 1u);
+    EXPECT_EQ(captures.state.stopCalls, 1u);
+}
+
+TEST(Engine_RejectsVirtualEndpointAsPhysicalOutput)
+{
+    FakeEndpointSessionFactory outputs;
+    FakeCaptureFactory captures;
+    EngineController engine(outputs, &captures);
+    RunConfiguration configuration = ValidSystemConfiguration();
+    configuration.routes[0].endpointId = configuration.virtualEndpointId;
+    EXPECT_TRUE(!engine.Start(configuration, {}).ok);
+    EXPECT_EQ(engine.Status().state, PlaybackState::Faulted);
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AudioTypes.h"
+#include "MasterFrameRingBuffer.h"
 
 #include <array>
 #include <atomic>
@@ -82,8 +83,9 @@ namespace soundstage::audio
     {
     public:
         virtual ~IEndpointSession() = default;
-        virtual SessionResult Prepare(const EndpointRoute&, TestPattern,
-                                      std::stop_token) = 0;
+        virtual SessionResult Prepare(
+            const EndpointRoute&, TestPattern, PlaybackMode,
+            MasterFrameRingBuffer*, std::stop_token) = 0;
         virtual SessionResult Prime() = 0;
         virtual SessionResult ArmStart(std::uint64_t startQpc100ns) = 0;
         virtual void SetDelayMs(std::uint32_t) noexcept = 0;

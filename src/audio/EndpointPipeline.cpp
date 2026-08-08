@@ -36,7 +36,14 @@ namespace soundstage::audio
 
         role_ = configuration.role;
         pattern_ = configuration.pattern;
+        mode_ = configuration.mode;
+        masterFrames_ = configuration.masterFrames;
+        if (mode_ == PlaybackMode::SystemAudio && masterFrames_ == nullptr)
+        {
+            return false;
+        }
         sourceFrame_ = 0;
+        lastMasterSequence_ = 0;
         converter_ = converter;
         const std::uint32_t delayMs =
             std::min(configuration.delayMs, MaximumDelayMs);
@@ -104,8 +111,21 @@ namespace soundstage::audio
     StereoFrame EndpointPipeline::NextFrame() noexcept
     {
         RoleFrame frame{};
-        generator_.Render(pattern_, sourceFrame_, std::span(&frame, 1));
-        ++sourceFrame_;
+        if (mode_ == PlaybackMode::SystemAudio)
+        {
+            const std::size_t reader =
+                role_ == SpeakerRole::Front ? 0u : 1u;
+            if (!masterFrames_->Read(
+                    reader, frame, lastMasterSequence_))
+            {
+                frame = {};
+            }
+        }
+        else
+        {
+            generator_.Render(pattern_, sourceFrame_, std::span(&frame, 1));
+            ++sourceFrame_;
+        }
         return delay_.ProcessFrame(
             role_ == SpeakerRole::Front ? frame.front : frame.rear);
     }

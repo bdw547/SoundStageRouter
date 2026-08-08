@@ -30,6 +30,7 @@ namespace soundstage
         void LayoutControls(int width, int height) const;
         void RefreshDevices();
         void PopulateControls();
+        void UpdateModeControls() const;
         void SaveSettings();
         void StartTest();
         [[nodiscard]] std::optional<audio::RunConfiguration>
@@ -57,6 +58,11 @@ namespace soundstage
         HWND rearDelay_ = nullptr;
         HWND patternLabel_ = nullptr;
         HWND patternCombo_ = nullptr;
+        HWND modeLabel_ = nullptr;
+        HWND modeCombo_ = nullptr;
+        HWND rearFillLabel_ = nullptr;
+        HWND rearFillCombo_ = nullptr;
+        HWND virtualStatus_ = nullptr;
         HWND refreshButton_ = nullptr;
         HWND saveButton_ = nullptr;
         HWND startButton_ = nullptr;

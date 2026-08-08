@@ -37,8 +37,10 @@ namespace test_audio
     public:
         explicit FakeEndpointSession(FakeSessionState& state) : state_(state) {}
 
-        SessionResult Prepare(const EndpointRoute&, TestPattern,
-                              const std::stop_token stopToken) override
+        SessionResult Prepare(
+            const EndpointRoute&, TestPattern, PlaybackMode,
+            MasterFrameRingBuffer*,
+            const std::stop_token stopToken) override
         {
             ++state_.prepareCalls;
             while (state_.waitForCancellation.load() &&

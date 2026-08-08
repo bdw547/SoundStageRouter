@@ -51,6 +51,17 @@ namespace
                value == L"RearTone";
     }
 
+    bool IsKnownModeString(const std::wstring_view value) noexcept
+    {
+        return value == L"SystemAudio" || value == L"TestSignals";
+    }
+
+    bool IsKnownRearFillString(const std::wstring_view value) noexcept
+    {
+        return value == L"Off" || value == L"Duplicate" ||
+               value == L"Ambient";
+    }
+
     void WriteString(const std::wstring& path, const wchar_t* key,
                      const std::wstring& value)
     {
@@ -98,6 +109,24 @@ namespace soundstage
         return audio::TestPattern::PairedClicks;
     }
 
+    std::wstring_view PlaybackModeToString(
+        const audio::PlaybackMode mode) noexcept
+    {
+        return mode == audio::PlaybackMode::TestSignals
+            ? L"TestSignals" : L"SystemAudio";
+    }
+
+    std::wstring_view RearFillModeToString(
+        const audio::RearFillMode mode) noexcept
+    {
+        switch (mode)
+        {
+        case audio::RearFillMode::Duplicate: return L"Duplicate";
+        case audio::RearFillMode::Ambient: return L"Ambient";
+        default: return L"Off";
+        }
+    }
+
     RouterSettingsStore::RouterSettingsStore()
     {
         PWSTR localAppData = nullptr;
@@ -114,6 +143,11 @@ namespace soundstage
         path_ = (directory / L"routing.ini").wstring();
     }
 
+    RouterSettingsStore::RouterSettingsStore(std::wstring path)
+        : path_(std::move(path))
+    {
+    }
+
     RouterSettings RouterSettingsStore::Load() const
     {
         RouterSettings settings;
@@ -125,12 +159,26 @@ namespace soundstage
             ReadString(path_, L"RearDelayMs", L"0"));
         const std::wstring pattern = ReadString(
             path_, L"TestPattern", L"PairedClicks");
+        const std::wstring mode = ReadString(
+            path_, L"Mode", L"SystemAudio");
+        const std::wstring rearFill = ReadString(
+            path_, L"RearFill", L"Off");
         settings.frontDelayMs = frontDelay.value_or(0);
         settings.rearDelayMs = rearDelay.value_or(0);
         settings.lastPattern = TestPatternFromString(pattern);
+        settings.mode = mode == L"TestSignals"
+            ? audio::PlaybackMode::TestSignals
+            : audio::PlaybackMode::SystemAudio;
+        settings.rearFill = rearFill == L"Duplicate"
+            ? audio::RearFillMode::Duplicate
+            : rearFill == L"Ambient"
+                ? audio::RearFillMode::Ambient
+                : audio::RearFillMode::Off;
         settings.loadAdjustedValues =
             !frontDelay.has_value() || !rearDelay.has_value() ||
-            !IsKnownPatternString(pattern);
+            !IsKnownPatternString(pattern) ||
+            !IsKnownModeString(mode) ||
+            !IsKnownRearFillString(rearFill);
         return settings;
     }
 
@@ -144,6 +192,10 @@ namespace soundstage
             audio::ClampDelayMs(settings.rearDelayMs)));
         WriteString(path_, L"TestPattern",
                     std::wstring(TestPatternToString(settings.lastPattern)));
+        WriteString(path_, L"Mode",
+                    std::wstring(PlaybackModeToString(settings.mode)));
+        WriteString(path_, L"RearFill",
+                    std::wstring(RearFillModeToString(settings.rearFill)));
     }
 
     const std::wstring& RouterSettingsStore::Path() const noexcept

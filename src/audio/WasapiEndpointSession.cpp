@@ -28,6 +28,10 @@ namespace soundstage::audio
 
     std::wstring FormatFault(const EngineFault& fault)
     {
+        if (!fault.message.empty())
+        {
+            return fault.message;
+        }
         const std::uint32_t deviceInvalidated =
             static_cast<std::uint32_t>(
                 AUDCLNT_E_DEVICE_INVALIDATED);
@@ -54,10 +58,6 @@ namespace soundstage::audio
             return L"Endpoint clock unavailable";
         default:
             break;
-        }
-        if (!fault.message.empty())
-        {
-            return fault.message;
         }
         std::wostringstream message;
         message << L"Audio failure 0x"
@@ -184,7 +184,7 @@ namespace soundstage::audio
                     backend->BufferFrames();
                 if (!pipeline.Reset({
                         role, pattern, route.delayMs,
-                        mixFormat, bufferFrames}))
+                        mixFormat, bufferFrames, mode, masterFrames}))
                 {
                     throw BackendFailure{UnsupportedFormatCode};
                 }
@@ -406,6 +406,8 @@ namespace soundstage::audio
         std::condition_variable condition;
         EndpointRoute route{};
         TestPattern pattern = TestPattern::PairedClicks;
+        PlaybackMode mode = PlaybackMode::TestSignals;
+        MasterFrameRingBuffer* masterFrames = nullptr;
         std::stop_token preparationToken;
         std::jthread worker;
         bool prepareDone = false;
@@ -444,10 +446,14 @@ namespace soundstage::audio
     SessionResult WasapiEndpointSession::Prepare(
         const EndpointRoute& route,
         const TestPattern pattern,
+        const PlaybackMode mode,
+        MasterFrameRingBuffer* const masterFrames,
         const std::stop_token stopToken)
     {
         impl_->route = route;
         impl_->pattern = pattern;
+        impl_->mode = mode;
+        impl_->masterFrames = masterFrames;
         impl_->preparationToken = stopToken;
         impl_->stopRequested.store(
             false, std::memory_order_release);

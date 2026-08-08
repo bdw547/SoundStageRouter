@@ -34,7 +34,7 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>ole32.lib;uuid.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>ole32.lib;uuid.lib;propsys.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -54,6 +54,9 @@
     <ClCompile Include="tests\audio\TelemetryQueueTests.cpp" />
     <ClCompile Include="tests\audio\WasapiEndpointSessionTests.cpp" />
     <ClCompile Include="tests\audio\WasapiFaultClassificationTests.cpp" />
+    <ClCompile Include="tests\audio\ChannelRouterTests.cpp" />
+    <ClCompile Include="tests\audio\MasterFrameRingBufferTests.cpp" />
+    <ClCompile Include="tests\audio\LoopbackCaptureTests.cpp" />
     <ClCompile Include="src\audio\TestPatternGenerator.cpp" />
     <ClCompile Include="src\audio\WasapiBackend.cpp" />
     <ClCompile Include="src\audio\WasapiEndpointSession.cpp" />
@@ -67,6 +70,9 @@
     <ClCompile Include="src\audio\EndpointConverter.cpp" />
     <ClCompile Include="src\audio\EngineController.cpp" />
     <ClCompile Include="src\audio\EndpointPipeline.cpp" />
+    <ClCompile Include="src\audio\ChannelRouter.cpp" />
+    <ClCompile Include="src\audio\MasterFrameRingBuffer.cpp" />
+    <ClCompile Include="src\audio\LoopbackCapture.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

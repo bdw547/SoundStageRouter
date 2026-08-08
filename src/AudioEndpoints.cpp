@@ -108,6 +108,7 @@ namespace
         endpoint.sampleRate = format->nSamplesPerSec;
         endpoint.bitsPerSample = format->wBitsPerSample;
         endpoint.channelMask = GetChannelMask(format);
+        endpoint.isFloatingPoint = IsFloatingPoint(format);
         endpoint.formatDescription = DescribeFormat(format);
         CoTaskMemFree(format);
     }
@@ -150,8 +151,17 @@ namespace soundstage
             AudioEndpoint endpoint;
             endpoint.id = GetDeviceId(device.Get());
             endpoint.name = GetFriendlyName(device.Get());
+            endpoint.isVirtualEndpoint =
+                endpoint.name == L"SoundStage Router 5.1";
             endpoint.isDefault = endpoint.id == defaultDeviceId;
             PopulateFormat(device.Get(), endpoint);
+            endpoint.virtualContractValid =
+                endpoint.isVirtualEndpoint &&
+                endpoint.channels == 6 &&
+                endpoint.sampleRate == 48000 &&
+                endpoint.bitsPerSample == 32 &&
+                endpoint.channelMask == 0x3F &&
+                endpoint.isFloatingPoint;
             endpoints.push_back(std::move(endpoint));
         }
 

@@ -3,6 +3,7 @@
 #include "AdaptiveResampler.h"
 #include "DelayLine.h"
 #include "EndpointConverter.h"
+#include "MasterFrameRingBuffer.h"
 #include "TestPatternGenerator.h"
 
 #include <atomic>
@@ -19,6 +20,8 @@ namespace soundstage::audio
         std::uint32_t delayMs = 0;
         EndpointMixFormat mixFormat{};
         std::uint32_t maximumRenderFrames = 0;
+        PlaybackMode mode = PlaybackMode::TestSignals;
+        MasterFrameRingBuffer* masterFrames = nullptr;
     };
 
     class EndpointPipeline final : private IFrameSource
@@ -41,6 +44,9 @@ namespace soundstage::audio
         TestPattern pattern_ = TestPattern::PairedClicks;
         std::uint64_t sourceFrame_ = 0;
         TestPatternGenerator generator_{};
+        PlaybackMode mode_ = PlaybackMode::TestSignals;
+        MasterFrameRingBuffer* masterFrames_ = nullptr;
+        std::uint64_t lastMasterSequence_ = 0;
         DelayLine delay_;
         AdaptiveResampler resampler_{};
         EndpointConverter converter_;

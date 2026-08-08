@@ -2,6 +2,7 @@
 
 #include "ClockSynchronizer.h"
 #include "EndpointSession.h"
+#include "LoopbackCapture.h"
 
 #include <array>
 #include <cstdint>
@@ -13,7 +14,9 @@ namespace soundstage::audio
     class EngineController
     {
     public:
-        explicit EngineController(IEndpointSessionFactory& factory);
+        explicit EngineController(
+            IEndpointSessionFactory& factory,
+            ILoopbackCaptureFactory* captureFactory = nullptr);
         SessionResult Start(const RunConfiguration& configuration,
                             std::stop_token stopToken);
         void Stop() noexcept;
@@ -31,6 +34,9 @@ namespace soundstage::audio
                              std::uint64_t qpc100ns) noexcept;
 
         IEndpointSessionFactory& factory_;
+        ILoopbackCaptureFactory* captureFactory_ = nullptr;
+        std::unique_ptr<ILoopbackCapture> capture_;
+        std::unique_ptr<MasterFrameRingBuffer> masterFrames_;
         std::array<std::unique_ptr<IEndpointSession>, 2> sessions_{};
         std::array<EndpointRoute, 2> routes_{};
         std::array<std::uint64_t, 2> lastUnderrunCounts_{};

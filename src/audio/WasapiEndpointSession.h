@@ -34,8 +34,17 @@ namespace soundstage::audio
             void* hookContext);
         ~WasapiEndpointSession() override;
 
-        SessionResult Prepare(const EndpointRoute&, TestPattern,
-                              std::stop_token) override;
+        SessionResult Prepare(
+            const EndpointRoute&, TestPattern, PlaybackMode,
+            MasterFrameRingBuffer*, std::stop_token) override;
+        SessionResult Prepare(
+            const EndpointRoute& route, TestPattern pattern,
+            std::stop_token stopToken)
+        {
+            return Prepare(
+                route, pattern, PlaybackMode::TestSignals,
+                nullptr, stopToken);
+        }
         SessionResult Prime() override;
         SessionResult ArmStart(std::uint64_t startQpc100ns) override;
         void SetDelayMs(std::uint32_t) noexcept override;

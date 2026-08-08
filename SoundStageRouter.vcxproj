@@ -84,6 +84,9 @@
     <ClInclude Include="src\audio\EndpointSession.h" />
     <ClInclude Include="src\audio\EngineController.h" />
     <ClInclude Include="src\audio\EndpointPipeline.h" />
+    <ClInclude Include="src\audio\ChannelRouter.h" />
+    <ClInclude Include="src\audio\MasterFrameRingBuffer.h" />
+    <ClInclude Include="src\audio\LoopbackCapture.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\AppWindow.cpp" />
@@ -100,6 +103,9 @@
     <ClCompile Include="src\audio\EndpointConverter.cpp" />
     <ClCompile Include="src\audio\EngineController.cpp" />
     <ClCompile Include="src\audio\EndpointPipeline.cpp" />
+    <ClCompile Include="src\audio\ChannelRouter.cpp" />
+    <ClCompile Include="src\audio\MasterFrameRingBuffer.cpp" />
+    <ClCompile Include="src\audio\LoopbackCapture.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

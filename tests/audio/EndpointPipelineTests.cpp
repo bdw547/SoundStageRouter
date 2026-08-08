@@ -134,3 +134,24 @@ TEST(Pipeline_ValidatesCapacityAndOutputSize)
     EXPECT_TRUE(!pipeline.Render(output, 5));
     EXPECT_TRUE(!pipeline.Render(std::span(output).first(output.size() - 1), 4));
 }
+
+TEST(Pipeline_SystemModeConsumesMasterFrames)
+{
+    MasterFrameRingBuffer ring(16);
+    for (int index = 0; index < 12; ++index)
+    {
+        EXPECT_TRUE(ring.Push({{0.25f, -0.25f}, {0.5f, -0.5f}}));
+    }
+    EndpointPipeline pipeline;
+    PipelineConfiguration config{
+        SpeakerRole::Front, TestPattern::PairedClicks, 0,
+        EndpointMixFormat{48000, 2, SampleEncoding::Float32, 8}, 4,
+        PlaybackMode::SystemAudio, &ring};
+    EXPECT_TRUE(pipeline.Reset(config));
+    std::array<std::byte, 4 * 8> output{};
+    EXPECT_TRUE(pipeline.Render(output, 4));
+    const float* samples =
+        reinterpret_cast<const float*>(output.data());
+    EXPECT_NEAR(samples[0], 0.25, 1e-6);
+    EXPECT_NEAR(samples[1], -0.25, 1e-6);
+}

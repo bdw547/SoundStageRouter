@@ -27,8 +27,13 @@ namespace soundstage::audio
     }
 
     AudioEngineCoordinator::AudioEngineCoordinator()
-        : AudioEngineCoordinator(
-            std::make_unique<WasapiEndpointSessionFactory>())
+        : factory_(std::make_unique<WasapiEndpointSessionFactory>()),
+          captureFactory_(
+              std::make_unique<WasapiLoopbackCaptureFactory>()),
+          engine_(std::make_unique<EngineController>(
+              *factory_, captureFactory_.get())),
+          status_(std::make_shared<const EngineStatus>()),
+          worker_([this](const std::stop_token token) { WorkerMain(token); })
     {
     }
 

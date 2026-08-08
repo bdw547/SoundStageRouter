@@ -16,6 +16,9 @@ namespace soundstage
         std::uint16_t bitsPerSample = 0;
         std::uint32_t channelMask = 0;
         bool isDefault = false;
+        bool isFloatingPoint = false;
+        bool isVirtualEndpoint = false;
+        bool virtualContractValid = false;
     };
 
     class AudioEndpointService

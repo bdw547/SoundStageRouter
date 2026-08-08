@@ -28,8 +28,10 @@ namespace soundstage::audio
         }
     }
 
-    EngineController::EngineController(IEndpointSessionFactory& factory)
-        : factory_(factory)
+    EngineController::EngineController(
+        IEndpointSessionFactory& factory,
+        ILoopbackCaptureFactory* const captureFactory)
+        : factory_(factory), captureFactory_(captureFactory)
     {
     }
 
@@ -54,6 +56,26 @@ namespace soundstage::audio
         }
 
         status_.state = PlaybackState::Preparing;
+        if (configuration.mode == PlaybackMode::SystemAudio)
+        {
+            try
+            {
+                masterFrames_ =
+                    std::make_unique<MasterFrameRingBuffer>(
+                        MasterSampleRate);
+                capture_ = captureFactory_->Create();
+            }
+            catch (...)
+            {
+                return Fail({SessionCreationCode, SpeakerRole::Front,
+                             L"Unable to create loopback capture"});
+            }
+            if (!capture_)
+            {
+                return Fail({SessionCreationCode, SpeakerRole::Front,
+                             L"Unable to create loopback capture"});
+            }
+        }
         const auto cancelStart = [&]() {
             Stop();
             return SessionResult::Failure(
@@ -88,7 +110,8 @@ namespace soundstage::audio
         {
             const std::size_t index = RoleIndex(route.role);
             const SessionResult prepared = sessions_[index]->Prepare(
-                route, configuration.pattern, stopToken);
+                route, configuration.pattern, configuration.mode,
+                masterFrames_.get(), stopToken);
             if (!prepared.ok)
             {
                 if (stopToken.stop_requested())
@@ -128,6 +151,34 @@ namespace soundstage::audio
         {
             return cancelStart();
         }
+        if (capture_)
+        {
+            SessionResult captured = capture_->Prepare(
+                *masterFrames_, configuration.rearFill, stopToken);
+            if (!captured.ok)
+            {
+                if (stopToken.stop_requested())
+                {
+                    Stop();
+                    return captured;
+                }
+                return Fail(captured.fault);
+            }
+            status_.virtualEndpointReady = true;
+            if (stopToken.stop_requested())
+            {
+                return cancelStart();
+            }
+            captured = capture_->Start();
+            if (!captured.ok)
+            {
+                return Fail(captured.fault);
+            }
+            if (stopToken.stop_requested())
+            {
+                return cancelStart();
+            }
+        }
         const std::uint64_t startQpc100ns =
             QpcNow100ns() + StartLeadTime100ns;
         for (const EndpointRoute& route : configuration.routes)
@@ -156,7 +207,7 @@ namespace soundstage::audio
     void EngineController::Stop() noexcept
     {
         const bool preserveFault = status_.state == PlaybackState::Faulted;
-        if (!sessions_[0] && !sessions_[1])
+        if (!sessions_[0] && !sessions_[1] && !capture_)
         {
             if (!preserveFault)
             {
@@ -166,6 +217,11 @@ namespace soundstage::audio
         }
 
         status_.state = PlaybackState::Stopping;
+        if (capture_)
+        {
+            capture_->Stop();
+            capture_.reset();
+        }
         for (std::unique_ptr<IEndpointSession>& session : sessions_)
         {
             if (session)
@@ -179,6 +235,8 @@ namespace soundstage::audio
             endpoint.prepared = false;
             endpoint.running = false;
         }
+        status_.virtualEndpointReady = false;
+        masterFrames_.reset();
         status_.state =
             preserveFault ? PlaybackState::Faulted : PlaybackState::Stopped;
     }
@@ -204,6 +262,22 @@ namespace soundstage::audio
         if (status_.state != PlaybackState::Running)
         {
             return;
+        }
+        if (capture_)
+        {
+            const CaptureTelemetry capture = capture_->Snapshot();
+            status_.virtualEndpointReady = capture.prepared;
+            status_.captureOverflowCount =
+                masterFrames_->OverflowCount();
+            status_.captureUnderrunCount =
+                masterFrames_->UnderrunCount(0) +
+                masterFrames_->UnderrunCount(1);
+            if (capture.faultCode != 0)
+            {
+                Fail({capture.faultCode, SpeakerRole::Front,
+                      L"Virtual endpoint capture stopped"});
+                return;
+            }
         }
 
         for (std::size_t index = 0; index < sessions_.size(); ++index)
@@ -269,6 +343,16 @@ namespace soundstage::audio
         }
         const EndpointRoute& first = configuration.routes[0];
         const EndpointRoute& second = configuration.routes[1];
+        if (configuration.mode == PlaybackMode::SystemAudio &&
+            (captureFactory_ == nullptr ||
+             configuration.virtualEndpointId.empty() ||
+             first.endpointId == configuration.virtualEndpointId ||
+             second.endpointId == configuration.virtualEndpointId))
+        {
+            return SessionResult::Failure(
+                InvalidConfigurationCode, SpeakerRole::Front,
+                L"System routing requires a distinct virtual input");
+        }
         if (first.endpointId.empty() || second.endpointId.empty() ||
             first.endpointId == second.endpointId ||
             first.role == second.role)
@@ -294,6 +378,11 @@ namespace soundstage::audio
 
     SessionResult EngineController::Fail(const EngineFault& fault) noexcept
     {
+        if (capture_)
+        {
+            capture_->Stop();
+            capture_.reset();
+        }
         for (std::unique_ptr<IEndpointSession>& session : sessions_)
         {
             if (session)
@@ -302,6 +391,8 @@ namespace soundstage::audio
                 session.reset();
             }
         }
+        status_.virtualEndpointReady = false;
+        masterFrames_.reset();
         for (EndpointTelemetry& endpoint : status_.endpoints)
         {
             endpoint.prepared = false;
