@@ -32,7 +32,10 @@
       <AdditionalIncludeDirectories>$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>SOUNDSTAGE_TESTING;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
-    <Link><SubSystem>Console</SubSystem></Link>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <AdditionalDependencies>ole32.lib;uuid.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="tests\TestMain.cpp" />
@@ -45,7 +48,11 @@
     <ClCompile Include="tests\audio\EndpointPipelineTests.cpp" />
     <ClCompile Include="tests\audio\EngineControllerTests.cpp" />
     <ClCompile Include="tests\audio\TestPatternGeneratorTests.cpp" />
+    <ClCompile Include="tests\audio\TelemetryQueueTests.cpp" />
+    <ClCompile Include="tests\audio\WasapiEndpointSessionTests.cpp" />
     <ClCompile Include="src\audio\TestPatternGenerator.cpp" />
+    <ClCompile Include="src\audio\WasapiBackend.cpp" />
+    <ClCompile Include="src\audio\WasapiEndpointSession.cpp" />
     <ClCompile Include="src\audio\DelayLine.cpp" />
     <ClCompile Include="src\audio\AdaptiveResampler.cpp" />
     <ClCompile Include="src\audio\AudioEngineCoordinator.cpp" />

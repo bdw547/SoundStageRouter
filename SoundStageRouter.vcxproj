@@ -74,6 +74,8 @@
     <ClInclude Include="src\AudioEndpoints.h" />
     <ClInclude Include="src\RouterSettings.h" />
     <ClInclude Include="src\audio\TestPatternGenerator.h" />
+    <ClInclude Include="src\audio\WasapiBackend.h" />
+    <ClInclude Include="src\audio\WasapiEndpointSession.h" />
     <ClInclude Include="src\audio\DelayLine.h" />
     <ClInclude Include="src\audio\AdaptiveResampler.h" />
     <ClInclude Include="src\audio\AudioEngineCoordinator.h" />
@@ -89,6 +91,8 @@
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\RouterSettings.cpp" />
     <ClCompile Include="src\audio\TestPatternGenerator.cpp" />
+    <ClCompile Include="src\audio\WasapiBackend.cpp" />
+    <ClCompile Include="src\audio\WasapiEndpointSession.cpp" />
     <ClCompile Include="src\audio\DelayLine.cpp" />
     <ClCompile Include="src\audio\AdaptiveResampler.cpp" />
     <ClCompile Include="src\audio\AudioEngineCoordinator.cpp" />

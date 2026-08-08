@@ -2,10 +2,13 @@
 
 #include "AudioTypes.h"
 
+#include <array>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <stop_token>
 #include <string>
+#include <type_traits>
 
 namespace soundstage::audio
 {
@@ -13,6 +16,45 @@ namespace soundstage::audio
     inline constexpr std::uint32_t SessionCreationCode = 0x1002u;
     inline constexpr std::uint32_t RepeatedUnderrunCode = 0x1003u;
     inline constexpr std::uint32_t ClockUnavailableCode = 0x1004u;
+
+    static_assert(std::is_trivially_copyable_v<EndpointTelemetry>);
+
+    class TelemetryQueue
+    {
+    public:
+        bool Push(const EndpointTelemetry& value) noexcept
+        {
+            const std::size_t write =
+                write_.load(std::memory_order_relaxed);
+            const std::size_t next = (write + 1) % values_.size();
+            if (next == read_.load(std::memory_order_acquire))
+            {
+                return false;
+            }
+            values_[write] = value;
+            write_.store(next, std::memory_order_release);
+            return true;
+        }
+
+        bool Pop(EndpointTelemetry& value) noexcept
+        {
+            const std::size_t read =
+                read_.load(std::memory_order_relaxed);
+            if (read == write_.load(std::memory_order_acquire))
+            {
+                return false;
+            }
+            value = values_[read];
+            read_.store((read + 1) % values_.size(),
+                        std::memory_order_release);
+            return true;
+        }
+
+    private:
+        std::array<EndpointTelemetry, 64> values_{};
+        std::atomic<std::size_t> write_{0};
+        std::atomic<std::size_t> read_{0};
+    };
 
     struct SessionResult
     {

@@ -1,4 +1,5 @@
 #include "AudioEngineCoordinator.h"
+#include "WasapiEndpointSession.h"
 
 #include <windows.h>
 
@@ -9,16 +10,6 @@ namespace soundstage::audio
 {
     namespace
     {
-        class UnavailableEndpointSessionFactory final
-            : public IEndpointSessionFactory
-        {
-        public:
-            std::unique_ptr<IEndpointSession> Create(SpeakerRole) override
-            {
-                return nullptr;
-            }
-        };
-
         [[nodiscard]] std::uint64_t QpcNow100ns() noexcept
         {
             LARGE_INTEGER counter{};
@@ -37,7 +28,7 @@ namespace soundstage::audio
 
     AudioEngineCoordinator::AudioEngineCoordinator()
         : AudioEngineCoordinator(
-            std::make_unique<UnavailableEndpointSessionFactory>())
+            std::make_unique<WasapiEndpointSessionFactory>())
     {
     }
 

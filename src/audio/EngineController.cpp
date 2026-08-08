@@ -84,6 +84,11 @@ namespace soundstage::audio
                 route, configuration.pattern, stopToken);
             if (!prepared.ok)
             {
+                if (stopToken.stop_requested())
+                {
+                    Stop();
+                    return prepared;
+                }
                 return Fail(prepared.fault);
             }
             status_.endpoints[index].prepared = true;
