@@ -40,11 +40,13 @@
     <ClCompile Include="tests\audio\AdaptiveResamplerTests.cpp" />
     <ClCompile Include="tests\audio\DelayLineTests.cpp" />
     <ClCompile Include="tests\audio\EndpointConverterTests.cpp" />
+    <ClCompile Include="tests\audio\EndpointPipelineTests.cpp" />
     <ClCompile Include="tests\audio\TestPatternGeneratorTests.cpp" />
     <ClCompile Include="src\audio\TestPatternGenerator.cpp" />
     <ClCompile Include="src\audio\DelayLine.cpp" />
     <ClCompile Include="src\audio\AdaptiveResampler.cpp" />
     <ClCompile Include="src\audio\EndpointConverter.cpp" />
+    <ClCompile Include="src\audio\EndpointPipeline.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
