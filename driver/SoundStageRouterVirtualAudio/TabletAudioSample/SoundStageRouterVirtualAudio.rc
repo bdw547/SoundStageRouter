@@ -1,0 +1,26 @@
+﻿/*++
+
+Copyright (c) Microsoft Corporation All Rights Reserved
+
+Module Name:
+
+    SoundStageRouterVirtualAudio.rc
+
+Abstract:
+
+--*/
+
+#include <windows.h>
+
+#include <ntverp.h>
+
+#define VER_FILETYPE                VFT_DRV
+#define VER_FILESUBTYPE             VFT2_DRV_SOUND
+#define VER_FILEDESCRIPTION_STR     "SoundStage Router Virtual Audio Driver"
+#define VER_INTERNALNAME_STR        "SoundStageRouterVirtualAudio.sys"
+#define VER_ORIGINALFILENAME_STR    "SoundStageRouterVirtualAudio.sys"
+
+#define VER_LEGALCOPYRIGHT_YEARS    "2026"
+#define VER_LEGALCOPYRIGHT_STR      "Copyright (C) SoundStage Router Project " VER_LEGALCOPYRIGHT_YEARS
+
+#include "common.ver"

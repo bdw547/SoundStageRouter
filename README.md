@@ -1,4 +1,4 @@
-# SoundStage Router
+﻿# SoundStage Router
 
 SoundStage Router is a native Windows prototype for synchronizing two physical
 audio outputs as one front/rear listening layout.
@@ -8,7 +8,7 @@ audio outputs as one front/rear listening layout.
 The application generates deterministic test audio and renders it to two
 distinct shared-mode WASAPI endpoints. It supports Front and Rear roles,
 paired and alternating clicks, role-specific tones, live manual delay from
-0–2000 ms, endpoint-clock telemetry, and bounded drift correction. Rear is the
+0â€“2000 ms, endpoint-clock telemetry, and bounded drift correction. Rear is the
 default clock reference; manual delay remains the authority for acoustic
 alignment.
 
@@ -63,3 +63,9 @@ still requires the documented Realtek/Bluetooth two-device smoke test.
 - [Approved synchronized playback design](docs/superpowers/specs/2026-08-08-synchronized-test-playback-design.md)
 - [Synchronized playback implementation plan](docs/superpowers/plans/2026-08-08-synchronized-test-playback.md)
 - [Separate acoustic alignment analyzer plan](docs/superpowers/plans/2026-08-08-acoustic-alignment-analyzer.md)
+
+## Virtual 5.1 driver (kernel slice)
+
+A separate SysVAD-derived kernel driver slice now lives under `driver\SoundStageRouterVirtualAudio`. It is intentionally isolated from the existing user-mode app and currently targets development-only, test-signed installation of a single root-enumerated virtual render endpoint named **SoundStage Router 5.1**.
+
+See `driver\SoundStageRouterVirtualAudio\README.md` for exact build, `infverif`, install, uninstall, signing, and upstream-license details.

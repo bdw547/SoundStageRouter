@@ -1,0 +1,13 @@
+﻿SoundStage Router Virtual Audio vendors a trimmed subset of Microsoft's SysVAD sample.
+
+Upstream project: microsoft/Windows-driver-samples
+Upstream URL: https://github.com/microsoft/Windows-driver-samples
+Upstream commit: 26a27df80772dbcfd69e6449b671d5c29eb5aedc
+Vendored subtree: audio/sysvad
+Primary upstream project files adapted from:
+- audio/sysvad/adapter.cpp
+- audio/sysvad/common.*
+- audio/sysvad/EndpointsCommon/*
+- audio/sysvad/TabletAudioSample/*
+
+The accompanying LICENSE-MS-PL.txt is copied verbatim from the upstream repository root.
