@@ -142,6 +142,18 @@ namespace soundstage::audio
 
         void Worker(const std::stop_token workerToken) noexcept
         {
+            std::stop_callback cancellationWake(
+                preparationToken, [this] { condition.notify_all(); });
+            const auto preparationCancelled = [&] {
+                return preparationToken.stop_requested();
+            };
+            const auto requirePreparationActive = [&] {
+                if (preparationCancelled())
+                {
+                    throw BackendFailure{
+                        static_cast<std::uint32_t>(E_ABORT)};
+                }
+            };
             HRESULT comResult = CoInitializeEx(
                 nullptr, COINIT_MULTITHREADED);
             const bool uninitialize =
@@ -158,10 +170,13 @@ namespace soundstage::audio
                 InvokeHook(SessionPhase::ActivateDevice);
                 Require(backend->ActivateDevice(
                     route.endpointId, preparationToken));
+                requirePreparationActive();
                 InvokeHook(SessionPhase::DiscoverFormat);
                 Require(backend->DiscoverFormat());
+                requirePreparationActive();
                 InvokeHook(SessionPhase::InitializeClient);
                 Require(backend->InitializeSharedMode());
+                requirePreparationActive();
                 InvokeHook(SessionPhase::AllocateBuffers);
                 const EndpointMixFormat mixFormat =
                     backend->MixFormat();
@@ -194,12 +209,14 @@ namespace soundstage::audio
                     std::unique_lock lock(mutex);
                     condition.wait(lock, [&] {
                         return primeRequested ||
+                               preparationCancelled() ||
                                workerToken.stop_requested() ||
                                stopRequested.load(
                                    std::memory_order_acquire);
                     });
                 }
-                if (workerToken.stop_requested() ||
+                if (preparationCancelled() ||
+                    workerToken.stop_requested() ||
                     stopRequested.load(std::memory_order_acquire))
                 {
                     throw BackendFailure{
@@ -207,6 +224,7 @@ namespace soundstage::audio
                 }
                 InvokeHook(SessionPhase::Prime);
                 Require(backend->PrimeSilence());
+                requirePreparationActive();
                 {
                     std::lock_guard lock(mutex);
                     primeDone = true;
@@ -217,17 +235,20 @@ namespace soundstage::audio
                     std::unique_lock lock(mutex);
                     condition.wait(lock, [&] {
                         return armRequested ||
+                               preparationCancelled() ||
                                workerToken.stop_requested() ||
                                stopRequested.load(
                                    std::memory_order_acquire);
                     });
                 }
-                if (workerToken.stop_requested() ||
+                if (preparationCancelled() ||
+                    workerToken.stop_requested() ||
                     stopRequested.load(std::memory_order_acquire))
                 {
                     throw BackendFailure{
                         static_cast<std::uint32_t>(E_ABORT)};
                 }
+                requirePreparationActive();
                 InvokeHook(SessionPhase::FirstRender);
                 Require(backend->StartAt(startQpc100ns));
 

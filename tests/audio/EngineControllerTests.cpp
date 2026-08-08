@@ -61,6 +61,42 @@ TEST(Engine_NormalLifecycleArmsBothAndStopsIdempotently)
     EXPECT_EQ(factory.Session(SpeakerRole::Rear).stopCalls.load(), 1u);
 }
 
+TEST(Engine_CancellationAfterPrepareNeverPrimesOrArms)
+{
+    FakeEndpointSessionFactory factory;
+    std::stop_source cancellation;
+    factory.Session(SpeakerRole::Front).cancelAfterPrepare = &cancellation;
+    EngineController engine(factory);
+
+    const SessionResult result =
+        engine.Start(ValidRunConfiguration(), cancellation.get_token());
+
+    EXPECT_TRUE(!result.ok);
+    EXPECT_EQ(engine.Status().state, PlaybackState::Stopped);
+    EXPECT_EQ(factory.Session(SpeakerRole::Front).primeCalls.load(), 0u);
+    EXPECT_EQ(factory.Session(SpeakerRole::Rear).primeCalls.load(), 0u);
+    EXPECT_EQ(factory.Session(SpeakerRole::Front).armCalls.load(), 0u);
+    EXPECT_EQ(factory.Session(SpeakerRole::Rear).armCalls.load(), 0u);
+}
+
+TEST(Engine_CancellationAfterPrimeNeverArms)
+{
+    FakeEndpointSessionFactory factory;
+    std::stop_source cancellation;
+    factory.Session(SpeakerRole::Front).cancelAfterPrime = &cancellation;
+    EngineController engine(factory);
+
+    const SessionResult result =
+        engine.Start(ValidRunConfiguration(), cancellation.get_token());
+
+    EXPECT_TRUE(!result.ok);
+    EXPECT_EQ(engine.Status().state, PlaybackState::Stopped);
+    EXPECT_EQ(factory.Session(SpeakerRole::Front).primeCalls.load(), 1u);
+    EXPECT_EQ(factory.Session(SpeakerRole::Rear).primeCalls.load(), 0u);
+    EXPECT_EQ(factory.Session(SpeakerRole::Front).armCalls.load(), 0u);
+    EXPECT_EQ(factory.Session(SpeakerRole::Rear).armCalls.load(), 0u);
+}
+
 TEST(Engine_DeviceFaultStopsBothSessions)
 {
     FakeEndpointSessionFactory factory;

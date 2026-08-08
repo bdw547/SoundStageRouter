@@ -54,6 +54,13 @@ namespace soundstage::audio
         }
 
         status_.state = PlaybackState::Preparing;
+        const auto cancelStart = [&]() {
+            Stop();
+            return SessionResult::Failure(
+                static_cast<std::uint32_t>(E_ABORT),
+                configuration.clockReferenceRole,
+                L"Playback start cancelled");
+        };
         for (const EndpointRoute& route : configuration.routes)
         {
             const std::size_t index = RoleIndex(route.role);
@@ -92,23 +99,43 @@ namespace soundstage::audio
                 return Fail(prepared.fault);
             }
             status_.endpoints[index].prepared = true;
+            if (stopToken.stop_requested())
+            {
+                return cancelStart();
+            }
         }
 
         for (const EndpointRoute& route : configuration.routes)
         {
+            if (stopToken.stop_requested())
+            {
+                return cancelStart();
+            }
             const std::size_t index = RoleIndex(route.role);
             const SessionResult primed = sessions_[index]->Prime();
             if (!primed.ok)
             {
                 return Fail(primed.fault);
             }
+            if (stopToken.stop_requested())
+            {
+                return cancelStart();
+            }
         }
         status_.state = PlaybackState::Primed;
 
+        if (stopToken.stop_requested())
+        {
+            return cancelStart();
+        }
         const std::uint64_t startQpc100ns =
             QpcNow100ns() + StartLeadTime100ns;
         for (const EndpointRoute& route : configuration.routes)
         {
+            if (stopToken.stop_requested())
+            {
+                return cancelStart();
+            }
             const std::size_t index = RoleIndex(route.role);
             const SessionResult armed =
                 sessions_[index]->ArmStart(startQpc100ns);
@@ -117,6 +144,10 @@ namespace soundstage::audio
                 return Fail(armed.fault);
             }
             status_.endpoints[index].running = true;
+            if (stopToken.stop_requested())
+            {
+                return cancelStart();
+            }
         }
         status_.state = PlaybackState::Running;
         return SessionResult::Success();

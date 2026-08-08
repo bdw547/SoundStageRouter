@@ -25,6 +25,8 @@ namespace test_audio
         std::atomic<unsigned> delayCalls{0};
         std::atomic<unsigned> correctionCalls{0};
         std::atomic<bool> waitForCancellation{false};
+        std::stop_source* cancelAfterPrepare = nullptr;
+        std::stop_source* cancelAfterPrime = nullptr;
         std::uint64_t armedStart = 0;
         std::uint32_t lastDelayMs = 0;
         double lastCorrectionPpm = 0.0;
@@ -49,12 +51,20 @@ namespace test_audio
                 return SessionResult::Failure(900, state_.telemetry.role,
                                               L"preparation cancelled");
             }
+            if (state_.cancelAfterPrepare)
+            {
+                state_.cancelAfterPrepare->request_stop();
+            }
             return state_.prepareResult;
         }
 
         SessionResult Prime() override
         {
             ++state_.primeCalls;
+            if (state_.cancelAfterPrime)
+            {
+                state_.cancelAfterPrime->request_stop();
+            }
             return state_.primeResult;
         }
 

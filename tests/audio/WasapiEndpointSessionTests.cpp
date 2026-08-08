@@ -15,6 +15,7 @@ namespace
     {
         std::atomic<unsigned> stopCalls{0};
         std::atomic<unsigned> beginCalls{0};
+        std::atomic<unsigned> startCalls{0};
         std::atomic<bool> blockActivation{false};
         std::atomic<bool> activationEntered{false};
         std::atomic<unsigned> failBeginAt{0};
@@ -52,7 +53,11 @@ namespace
         double BufferDurationMs() const noexcept override { return 4.0; }
         BackendResult InitializeSharedMode() override { return {}; }
         BackendResult PrimeSilence() override { return {}; }
-        BackendResult StartAt(std::uint64_t) override { return {}; }
+        BackendResult StartAt(std::uint64_t) override
+        {
+            ++state_->startCalls;
+            return {};
+        }
         BackendWaitResult WaitForRender(
             std::chrono::milliseconds) override
         {
@@ -204,6 +209,27 @@ TEST(WasapiSession_StopDuringActivationCancelsAndJoins)
     session.Stop();
     EXPECT_TRUE(!result.ok);
     EXPECT_EQ(state->stopCalls.load(), 1u);
+}
+
+TEST(WasapiSession_CancellationWhileAwaitingPrimeStopsBeforeStart)
+{
+    auto state = std::make_shared<FakeBackendState>();
+    WasapiEndpointSession session(
+        SpeakerRole::Front,
+        std::make_unique<FakeWasapiBackend>(state), nullptr, nullptr);
+    std::stop_source cancellation;
+
+    EXPECT_TRUE(session.Prepare(
+        {SpeakerRole::Front, L"fake-front", 0, false},
+        TestPattern::PairedClicks, cancellation.get_token()).ok);
+    cancellation.request_stop();
+    EXPECT_TRUE(WaitFor([&] {
+        return session.Snapshot().faultCode != 0;
+    }));
+
+    EXPECT_TRUE(!session.Prime().ok);
+    session.Stop();
+    EXPECT_EQ(state->startCalls.load(), 0u);
 }
 
 TEST(WasapiSession_PublishesStableRenderFailure)
