@@ -43,11 +43,11 @@ TEST(TestPattern_RandomAccessMatchesContiguousRendering)
     std::array<RoleFrame, 512> contiguous{};
     std::array<RoleFrame, 256> tail{};
     generator.Render(TestPattern::PairedClicks, 0, contiguous);
-    generator.Render(TestPattern::PairedClicks, 256, tail);
+    generator.Render(TestPattern::PairedClicks, 64, tail);
     for (std::size_t index = 0; index < tail.size(); ++index)
     {
-        EXPECT_NEAR(tail[index].front.left, contiguous[index + 256].front.left, 1e-7);
-        EXPECT_NEAR(tail[index].rear.left, contiguous[index + 256].rear.left, 1e-7);
+        EXPECT_NEAR(tail[index].front.left, contiguous[index + 64].front.left, 1e-7);
+        EXPECT_NEAR(tail[index].rear.left, contiguous[index + 64].rear.left, 1e-7);
     }
 }
 
