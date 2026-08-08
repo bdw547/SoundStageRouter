@@ -22,7 +22,7 @@ The milestone is successful when it can:
 - Stop cleanly on device invalidation or repeated render failure without crashing or leaving one endpoint playing indefinitely.
 - Persist endpoint assignments and manual delay values per Windows user.
 
-The 10 ms target is an end-to-end hardware observation measured at the listening position. Internal telemetry alone cannot prove it because Bluetooth firmware and speaker electronics may add latency after the Windows endpoint clock.
+The 10 ms target is an end-to-end hardware measurement at the listening position. Internal telemetry alone cannot prove it because Bluetooth firmware and speaker electronics may add latency after the Windows endpoint clock. Paired-click frames therefore give the front and rear pulses distinct, known spectral signatures. An offline acceptance tool can separate their acoustic arrivals from one external microphone recording and calculate their onset difference; the application itself never opens a capture endpoint.
 
 ## Scope
 
@@ -51,7 +51,7 @@ Core engine types must use role/endpoint collections rather than hard-coded fron
 
 The existing endpoint selection and delay controls remain the starting point. The playback milestone adds:
 
-- A test-pattern selector with `Paired clicks`, `Alternating clicks`, `Front only`, and `Rear only` choices.
+- A test-pattern selector with `Paired clicks`, `Alternating clicks`, `Front tone`, and `Rear tone` choices.
 - `Start test` and `Stop` controls.
 - Live front and rear delay controls, constrained to 0–2000 ms.
 - A compact status area showing each endpoint's state, the current reference endpoint, estimated relative drift, underrun count, and whether clock-based correction is active.
@@ -100,7 +100,7 @@ The Bluetooth rear endpoint is the initial synchronization reference because it 
 
 #### `TestPatternGenerator`
 
-Produces deterministic 48 kHz float frames for all supported patterns. It is pure DSP code: no COM, window calls, allocation during rendering, logging, or file access. Clicks use a short shaped pulse to avoid a full-scale single-sample impulse; tones use a bounded amplitude and short fade envelope.
+Produces deterministic 48 kHz float frames for all supported patterns. It is pure DSP code: no COM, window calls, allocation during rendering, logging, or file access. Clicks use short, shaped, spectrally distinct front/rear pulses rather than full-scale single-sample impulses; tones use a conservative bounded amplitude and short fade envelope. The distinct click signatures remain easy to hear while also supporting objective acoustic-onset analysis.
 
 #### `MasterTimeline`
 
@@ -108,7 +108,7 @@ Owns the monotonic logical frame position and defines frame zero for a playback 
 
 #### `DelayLine`
 
-Implements a per-role FIFO sized for the maximum 2000 ms delay plus render safety margin. Delay is represented internally in frames. A live change crossfades or slews between read positions over a short interval so it does not create a discontinuity, pop, or duplicated click. The displayed millisecond value remains the persisted user setting.
+Implements a per-role FIFO sized for the maximum 2000 ms delay plus render safety margin. Delay is represented internally in frames. A live change crossfades or slews between read positions over a short interval so it does not create a discontinuity, pop, or duplicated click. Changes of 1–20 ms must be artifact-free in ordinary listening; larger edits may take proportionally longer to settle rather than jumping the read position. The displayed millisecond value remains the persisted user setting.
 
 #### `AdaptiveResampler`
 
@@ -227,12 +227,13 @@ Inject failures at endpoint activation, format discovery, buffer allocation, wor
 
 On the target Realtek soundbar/subwoofer and Bluetooth headrest:
 
-1. Verify each role independently with front-only and rear-only patterns.
+1. Verify each role independently with the front-tone and rear-tone patterns.
 2. Use alternating clicks to confirm role placement.
 3. Manually align paired clicks at the listening position.
-4. Record an external measurement or listening observation at start and after 30 minutes; alignment must remain within 10 ms.
-5. Adjust delay during playback and verify there is no obvious pop or unstable playback.
-6. Disconnect and reconnect Bluetooth during a run; both streams must stop cleanly, the profile must remain, and a subsequent manually started run must work.
+4. Place one microphone at the listening position and record at least 30 seconds of paired clicks immediately after alignment and again after 30 minutes of continuous playback.
+5. Analyze the recording against the known front/rear click signatures. The absolute front/rear onset difference must be at most 10 ms for at least 95% of detected click pairs in both recordings.
+6. Make representative 1–20 ms delay adjustments during playback and verify there is no obvious pop, duplicated click, or unstable playback.
+7. Disconnect and reconnect Bluetooth during a run; both streams must stop cleanly, the profile must remain, and a subsequent manually started run must work.
 
 Hardware acceptance is required because shared-mode WASAPI telemetry cannot observe all latency beyond the OS render endpoint.
 
@@ -257,4 +258,3 @@ This milestone only generates audio and opens selected render endpoints. It does
 ## Future compatibility
 
 Once this milestone passes hardware acceptance, the same master timeline and endpoint pipeline can accept decoded or captured multichannel frames instead of generated test patterns. A later virtual audio driver can present a 5.1/7.1 endpoint to Windows and feed those frames to the user-mode router. Additional physical outputs can be represented as more role-to-endpoint pipelines, but their user experience and acoustic calibration are separate designs.
-
