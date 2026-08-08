@@ -157,7 +157,9 @@ namespace soundstage
             const std::wstring interfaceName = GetPropertyString(
                 device.Get(), PKEY_DeviceInterface_FriendlyName, L"");
             endpoint.isVirtualEndpoint =
-                interfaceName == L"SoundStage Router 5.1";
+                interfaceName == L"SoundStage Router 5.1" ||
+                interfaceName ==
+                    L"SoundStage Router Virtual Audio (WDM)";
             endpoint.isDefault = endpoint.id == defaultDeviceId;
             PopulateFormat(device.Get(), endpoint);
             endpoint.virtualContractValid =

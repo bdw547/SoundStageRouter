@@ -16,6 +16,8 @@ namespace soundstage::audio
 {
     inline constexpr wchar_t VirtualEndpointName[] =
         L"SoundStage Router 5.1";
+    inline constexpr wchar_t VirtualDriverInterfaceName[] =
+        L"SoundStage Router Virtual Audio (WDM)";
     inline constexpr std::uint32_t VirtualChannelMask = 0x0000003Fu;
     inline constexpr std::uint32_t VirtualEndpointMissingCode = 0x3001u;
     inline constexpr std::uint32_t VirtualEndpointDuplicateCode = 0x3002u;

@@ -159,7 +159,9 @@ namespace soundstage::audio
             const bool matching =
                 SUCCEEDED(nameResult) && name.vt == VT_LPWSTR &&
                 name.pwszVal != nullptr &&
-                std::wstring_view(name.pwszVal) == VirtualEndpointName;
+                (std::wstring_view(name.pwszVal) == VirtualEndpointName ||
+                 std::wstring_view(name.pwszVal) ==
+                     VirtualDriverInterfaceName);
             PropVariantClear(&name);
             if (matching)
             {
