@@ -37,6 +37,8 @@
   <ItemGroup>
     <ClCompile Include="tests\TestMain.cpp" />
     <ClCompile Include="tests\audio\AudioTypesTests.cpp" />
+    <ClCompile Include="tests\audio\TestPatternGeneratorTests.cpp" />
+    <ClCompile Include="src\audio\TestPatternGenerator.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

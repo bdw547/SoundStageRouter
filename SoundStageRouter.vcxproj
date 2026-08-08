@@ -73,12 +73,14 @@
     <ClInclude Include="src\AppWindow.h" />
     <ClInclude Include="src\AudioEndpoints.h" />
     <ClInclude Include="src\RouterSettings.h" />
+    <ClInclude Include="src\audio\TestPatternGenerator.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\AppWindow.cpp" />
     <ClCompile Include="src\AudioEndpoints.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\RouterSettings.cpp" />
+    <ClCompile Include="src\audio\TestPatternGenerator.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
