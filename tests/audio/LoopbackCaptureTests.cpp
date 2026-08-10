@@ -36,6 +36,7 @@ namespace
                 packetGiven = true;
                 value.frames = 1;
                 value.silent = silent;
+                value.masterGain = masterGain;
                 if (!silent)
                 {
                     value.samples = samples;
@@ -56,6 +57,7 @@ namespace
         std::atomic<bool> released{false};
         bool silent = false;
         bool packetGiven = false;
+        float masterGain = 1.0f;
     };
 }
 
@@ -100,6 +102,29 @@ TEST(LoopbackCapture_RejectsWrongInjectedFormat)
         capture.Prepare(ring, RearFillMode::Off, {});
     EXPECT_TRUE(!result.ok);
     EXPECT_EQ(result.fault.code, VirtualEndpointFormatCode);
+}
+
+TEST(LoopbackCapture_AppliesWindowsMasterGain)
+{
+    auto backend = std::make_unique<FakeCaptureBackend>();
+    FakeCaptureBackend* observed = backend.get();
+    observed->masterGain = 0.25f;
+    WasapiLoopbackCapture capture(std::move(backend));
+    MasterFrameRingBuffer ring(8);
+    EXPECT_TRUE(capture.Prepare(ring, RearFillMode::Off, {}).ok);
+    EXPECT_TRUE(capture.Start().ok);
+    for (int wait = 0; wait < 100 && !observed->released.load(); ++wait)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    capture.Stop();
+    RoleFrame frame;
+    std::uint64_t sequence = 99;
+    EXPECT_TRUE(ring.Read(0, frame, sequence));
+    EXPECT_NEAR(frame.front.left, 0.05, 1e-6);
+    EXPECT_NEAR(frame.front.right, 0.075, 1e-6);
+    EXPECT_NEAR(frame.rear.left, 0.1, 1e-6);
+    EXPECT_NEAR(frame.rear.right, 0.125, 1e-6);
 }
 
 TEST(LoopbackCapture_PropagatesMissingAndDuplicateDiscovery)

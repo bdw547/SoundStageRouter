@@ -49,6 +49,7 @@ namespace soundstage::audio
             std::min(configuration.delayMs, MaximumDelayMs);
         delayMs_.store(delayMs, std::memory_order_relaxed);
         correctionPpm_.store(0.0, std::memory_order_relaxed);
+        gain_ = std::clamp(configuration.gain, 0.0f, 1.0f);
         delay_.Reset(static_cast<double>(MillisecondsToFrames(delayMs)));
         resampler_.Reset(
             static_cast<double>(MasterSampleRate) /
@@ -95,7 +96,8 @@ namespace soundstage::audio
                 ? 1.0f
                 : static_cast<float>(index) /
                     static_cast<float>(frames.size() - 1);
-            const float gain = std::lerp(startGain, endGain, fraction);
+            const float gain =
+                gain_ * std::lerp(startGain, endGain, fraction);
             frames[index].left *= gain;
             frames[index].right *= gain;
         }

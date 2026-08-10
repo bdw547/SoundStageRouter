@@ -149,6 +149,10 @@ private:
     PCMiniportWaveRTStream            * m_SystemStreams;
     PCMiniportWaveRTStream            * m_OffloadStreams;
     PCMiniportWaveRTStream            * m_LoopbackStreams;
+    BYTE                              * m_LoopbackMixBuffer;
+    ULONG                               m_LoopbackMixBufferSize;
+    ULONGLONG                           m_LoopbackMixWritePosition;
+    KSPIN_LOCK                          m_LoopbackMixLock;
 
     BOOL                                m_bGfxEnabled;
     PBOOL                               m_pbMuted;
@@ -375,6 +379,7 @@ public:
 // End retained sideband helper members.
 
         KeInitializeSpinLock(&m_DeviceFormatsAndModesLock);
+        KeInitializeSpinLock(&m_LoopbackMixLock);
         m_DeviceFormatsAndModesIrql = PASSIVE_LEVEL;
     }
 
@@ -396,6 +401,19 @@ public:
     );   
 
 public:
+    VOID WriteLoopbackMix(
+        _In_reads_bytes_(ByteCount) const BYTE* Source,
+        _In_ ULONG SourceSize,
+        _In_ ULONG SourceOffset,
+        _In_ ULONG ByteCount);
+    VOID ReadLoopbackMix(
+        _Out_writes_bytes_(ByteCount) BYTE* Destination,
+        _In_ ULONG DestinationSize,
+        _In_ ULONG DestinationOffset,
+        _In_ ULONG ByteCount,
+        _Inout_ ULONGLONG* ReadPosition);
+    ULONGLONG GetLoopbackMixWritePosition();
+
     VOID DpcRoutine(LONGLONG PerformanceCounter, LONGLONG PerformanceFrequency)
     {
         m_KeywordDetector.DpcRoutine(PerformanceCounter, PerformanceFrequency);
@@ -738,5 +756,3 @@ public:
 typedef CMiniportWaveRT *PCMiniportWaveRT;
 
 #endif // _SYSVAD_MINWAVERT_H_
-
-

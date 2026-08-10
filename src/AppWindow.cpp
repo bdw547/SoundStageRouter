@@ -26,6 +26,8 @@ namespace
     constexpr int StopButtonId = 1010;
     constexpr int ModeComboId = 1011;
     constexpr int RearFillComboId = 1012;
+    constexpr int FrontLevelId = 1013;
+    constexpr int RearLevelId = 1014;
     constexpr UINT_PTR StatusTimerId = 1;
     constexpr UINT StatusTimerPeriodMs = 250;
 
@@ -249,6 +251,12 @@ namespace soundstage
         frontDelay_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"0",
             WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_RIGHT | WS_TABSTOP,
             0, 0, 0, 0, window_, ControlId(FrontDelayId), instance_, nullptr);
+        frontLevelLabel_ = CreateLabel(window_, L"Level (%)");
+        frontLevel_ = CreateWindowExW(
+            WS_EX_CLIENTEDGE, L"EDIT", L"100",
+            WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_RIGHT | WS_TABSTOP,
+            0, 0, 0, 0, window_, ControlId(FrontLevelId),
+            instance_, nullptr);
 
         rearLabel_ = CreateLabel(
             window_, L"Rear output (Bluetooth headrest)");
@@ -259,6 +267,12 @@ namespace soundstage
         rearDelay_ = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"0",
             WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_RIGHT | WS_TABSTOP,
             0, 0, 0, 0, window_, ControlId(RearDelayId), instance_, nullptr);
+        rearLevelLabel_ = CreateLabel(window_, L"Level (%)");
+        rearLevel_ = CreateWindowExW(
+            WS_EX_CLIENTEDGE, L"EDIT", L"100",
+            WS_CHILD | WS_VISIBLE | ES_NUMBER | ES_RIGHT | WS_TABSTOP,
+            0, 0, 0, 0, window_, ControlId(RearLevelId),
+            instance_, nullptr);
 
         patternLabel_ = CreateLabel(window_, L"Test pattern");
         patternCombo_ = CreateWindowExW(
@@ -327,7 +341,9 @@ namespace soundstage
         for (const HWND child : {
                  title_, subtitle_, deviceList_,
                  frontLabel_, frontCombo_, frontDelayLabel_, frontDelay_,
+                 frontLevelLabel_, frontLevel_,
                  rearLabel_, rearCombo_, rearDelayLabel_, rearDelay_,
+                 rearLevelLabel_, rearLevel_,
                  modeLabel_, modeCombo_, rearFillLabel_, rearFillCombo_,
                  virtualStatus_,
                  patternLabel_, patternCombo_, refreshButton_, saveButton_,
@@ -357,8 +373,10 @@ namespace soundstage
 
         const int formTop = std::max(230, height - 480);
         const int delayWidth = 100;
+        const int levelWidth = 100;
         const int gap = 16;
-        const int comboWidth = contentWidth - delayWidth - gap;
+        const int comboWidth =
+            contentWidth - delayWidth - levelWidth - gap * 2;
 
         MoveWindow(modeLabel_, margin, formTop, 240, 23, TRUE);
         MoveWindow(modeCombo_, margin, formTop + 24, 300, 180, TRUE);
@@ -370,15 +388,27 @@ namespace soundstage
         MoveWindow(frontLabel_, margin, routesTop, comboWidth, 23, TRUE);
         MoveWindow(frontDelayLabel_, margin + comboWidth + gap, routesTop,
                    delayWidth, 23, TRUE);
+        MoveWindow(frontLevelLabel_,
+                   margin + comboWidth + delayWidth + gap * 2,
+                   routesTop, levelWidth, 23, TRUE);
         MoveWindow(rearLabel_, margin, routesTop + 62, comboWidth, 23, TRUE);
         MoveWindow(rearDelayLabel_, margin + comboWidth + gap, routesTop + 62,
                    delayWidth, 23, TRUE);
+        MoveWindow(rearLevelLabel_,
+                   margin + comboWidth + delayWidth + gap * 2,
+                   routesTop + 62, levelWidth, 23, TRUE);
 
         MoveWindow(frontCombo_, margin, routesTop + 25, comboWidth, 220, TRUE);
         MoveWindow(frontDelay_, margin + comboWidth + gap, routesTop + 25, delayWidth, 30, TRUE);
+        MoveWindow(frontLevel_,
+                   margin + comboWidth + delayWidth + gap * 2,
+                   routesTop + 25, levelWidth, 30, TRUE);
         MoveWindow(rearCombo_, margin, routesTop + 87, comboWidth, 220, TRUE);
         MoveWindow(rearDelay_, margin + comboWidth + gap, routesTop + 87,
                    delayWidth, 30, TRUE);
+        MoveWindow(rearLevel_,
+                   margin + comboWidth + delayWidth + gap * 2,
+                   routesTop + 87, levelWidth, 30, TRUE);
         MoveWindow(patternLabel_, margin, routesTop + 126, 240, 23, TRUE);
         MoveWindow(patternCombo_, margin, routesTop + 151, 260, 180, TRUE);
         MoveWindow(refreshButton_, margin, routesTop + 198, 150, 36, TRUE);
@@ -551,6 +581,12 @@ namespace soundstage
         ComboBox_SetCurSel(rearCombo_, rearSelection);
         SetWindowTextW(frontDelay_, std::to_wstring(settings_.frontDelayMs).c_str());
         SetWindowTextW(rearDelay_, std::to_wstring(settings_.rearDelayMs).c_str());
+        SetWindowTextW(
+            frontLevel_,
+            std::to_wstring(settings_.frontLevelPercent).c_str());
+        SetWindowTextW(
+            rearLevel_,
+            std::to_wstring(settings_.rearLevelPercent).c_str());
     }
 
     void AppWindow::SaveSettings()
@@ -574,6 +610,8 @@ namespace soundstage
         settings_.rearEndpointId = endpoints_[rear].id;
         settings_.frontDelayMs = ReadDelay(frontDelay_);
         settings_.rearDelayMs = ReadDelay(rearDelay_);
+        settings_.frontLevelPercent = ReadLevel(frontLevel_);
+        settings_.rearLevelPercent = ReadLevel(rearLevel_);
         const int pattern = ComboBox_GetCurSel(patternCombo_);
         settings_.lastPattern = pattern >= 0 && pattern <= 3
             ? static_cast<audio::TestPattern>(pattern)
@@ -614,6 +652,10 @@ namespace soundstage
             configuration->routes[0].delayMs);
         settings_.rearDelayMs = static_cast<int>(
             configuration->routes[1].delayMs);
+        settings_.frontLevelPercent = static_cast<int>(
+            configuration->routes[0].gain * 100.0f);
+        settings_.rearLevelPercent = static_cast<int>(
+            configuration->routes[1].gain * 100.0f);
         settings_.lastPattern = configuration->pattern;
         settings_.mode = configuration->mode;
         settings_.rearFill = configuration->rearFill;
@@ -715,11 +757,13 @@ namespace soundstage
             {audio::SpeakerRole::Front,
              endpoints_[frontIndex].id,
              audio::ClampDelayMs(ReadDelay(frontDelay_)),
-             false},
+             false,
+             static_cast<float>(ReadLevel(frontLevel_)) / 100.0f},
             {audio::SpeakerRole::Rear,
              endpoints_[rearIndex].id,
              audio::ClampDelayMs(ReadDelay(rearDelay_)),
-             true}
+             true,
+             static_cast<float>(ReadLevel(rearLevel_)) / 100.0f}
         };
         return configuration;
     }
@@ -801,6 +845,8 @@ namespace soundstage
         EnableWindow(patternCombo_, selectable);
         EnableWindow(modeCombo_, selectable);
         EnableWindow(rearFillCombo_, selectable);
+        EnableWindow(frontLevel_, selectable);
+        EnableWindow(rearLevel_, selectable);
         EnableWindow(refreshButton_, selectable);
         EnableWindow(saveButton_, selectable);
         EnableWindow(startButton_, selectable);
@@ -839,6 +885,16 @@ namespace soundstage
         const UINT value = GetDlgItemInt(window_, GetDlgCtrlID(edit), &valid, FALSE);
         if (valid == FALSE) return 0;
         return std::clamp(static_cast<int>(value), 0, 2000);
+    }
+
+    int AppWindow::ReadLevel(const HWND edit) const
+    {
+        BOOL valid = FALSE;
+        const UINT value = GetDlgItemInt(
+            window_, GetDlgCtrlID(edit), &valid, FALSE);
+        return valid == FALSE
+            ? 100
+            : audio::ClampLevelPercent(static_cast<int>(value));
     }
 
     void AppWindow::ApplyFont(const HWND control, const HFONT font) const

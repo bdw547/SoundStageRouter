@@ -57,6 +57,8 @@ TEST(RouterSettings_FileRoundTripsModeAndRearFill)
     expected.rearEndpointId = L"rear-id";
     expected.frontDelayMs = 12;
     expected.rearDelayMs = 345;
+    expected.frontLevelPercent = 72;
+    expected.rearLevelPercent = 43;
     expected.lastPattern = TestPattern::RearTone;
     expected.mode = PlaybackMode::TestSignals;
     expected.rearFill = RearFillMode::Ambient;
@@ -66,6 +68,8 @@ TEST(RouterSettings_FileRoundTripsModeAndRearFill)
     EXPECT_EQ(actual.rearEndpointId, expected.rearEndpointId);
     EXPECT_EQ(actual.frontDelayMs, expected.frontDelayMs);
     EXPECT_EQ(actual.rearDelayMs, expected.rearDelayMs);
+    EXPECT_EQ(actual.frontLevelPercent, expected.frontLevelPercent);
+    EXPECT_EQ(actual.rearLevelPercent, expected.rearLevelPercent);
     EXPECT_EQ(actual.lastPattern, expected.lastPattern);
     EXPECT_EQ(actual.mode, expected.mode);
     EXPECT_EQ(actual.rearFill, expected.rearFill);

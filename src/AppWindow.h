@@ -41,6 +41,7 @@ namespace soundstage
         int FindEndpoint(const std::wstring& id) const;
         int SelectedEndpointIndex(HWND combo) const;
         int ReadDelay(HWND edit) const;
+        int ReadLevel(HWND edit) const;
         void ApplyFont(HWND control, HFONT font) const;
 
         HINSTANCE instance_ = nullptr;
@@ -52,10 +53,14 @@ namespace soundstage
         HWND frontCombo_ = nullptr;
         HWND frontDelayLabel_ = nullptr;
         HWND frontDelay_ = nullptr;
+        HWND frontLevelLabel_ = nullptr;
+        HWND frontLevel_ = nullptr;
         HWND rearLabel_ = nullptr;
         HWND rearCombo_ = nullptr;
         HWND rearDelayLabel_ = nullptr;
         HWND rearDelay_ = nullptr;
+        HWND rearLevelLabel_ = nullptr;
+        HWND rearLevel_ = nullptr;
         HWND patternLabel_ = nullptr;
         HWND patternCombo_ = nullptr;
         HWND modeLabel_ = nullptr;

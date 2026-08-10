@@ -22,6 +22,8 @@ namespace soundstage
         std::wstring rearEndpointId;
         int frontDelayMs = 0;
         int rearDelayMs = 0;
+        int frontLevelPercent = 100;
+        int rearLevelPercent = 100;
         audio::TestPattern lastPattern =
             audio::TestPattern::PairedClicks;
         audio::PlaybackMode mode = audio::PlaybackMode::SystemAudio;

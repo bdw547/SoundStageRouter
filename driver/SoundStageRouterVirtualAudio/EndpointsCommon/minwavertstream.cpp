@@ -240,6 +240,7 @@ Return Value:
     m_ullLinearPosition = 0;
     m_ullPresentationPosition = 0;
     m_ulContentId = 0;
+    m_ullLoopbackReadPosition = 0;
     m_ulCurrentWritePosition = 0;
     m_ulLastOsReadPacket = ULONG_MAX;
     m_ulLastOsWritePacket = ULONG_MAX;
@@ -439,6 +440,11 @@ Return Value:
     if (NT_SUCCESS(ntStatus))
     {
         m_bUnregisterStream = TRUE;
+        if (m_pMiniport->IsLoopbackPin(m_ulPin))
+        {
+            m_ullLoopbackReadPosition =
+                m_pMiniport->GetLoopbackMixWritePosition();
+        }
     }
 
     return ntStatus;
@@ -618,10 +624,16 @@ VOID CMiniportWaveRTStream::FreeBufferWithNotification
 
     if (Mdl_ != NULL)
     {
-        if (m_pDmaBuffer != NULL)
+        KIRQL oldIrql;
+        KeAcquireSpinLock(&m_PositionSpinLock, &oldIrql);
+        BYTE* dmaBuffer = m_pDmaBuffer;
+        m_pDmaBuffer = NULL;
+        m_ulDmaBufferSize = 0;
+        KeReleaseSpinLock(&m_PositionSpinLock, oldIrql);
+
+        if (dmaBuffer != NULL)
         {
-            m_pPortStream->UnmapAllocatedPages(m_pDmaBuffer, Mdl_);
-            m_pDmaBuffer = NULL;
+            m_pPortStream->UnmapAllocatedPages(dmaBuffer, Mdl_);
         }
         
         m_pPortStream->FreePagesFromMdl(Mdl_);
@@ -1399,6 +1411,11 @@ VOID CMiniportWaveRTStream::UpdatePosition
     _In_ LARGE_INTEGER ilQPC
 )
 {
+    if (m_pDmaBuffer == NULL || m_ulDmaBufferSize == 0)
+    {
+        return;
+    }
+
     // Convert ticks to 100ns units.
     LONGLONG  hnsCurrentTime = KSCONVERT_PERFORMANCE_TIME(m_ullPerformanceCounterFrequency.QuadPart, ilQPC);
     
@@ -1449,6 +1466,16 @@ VOID CMiniportWaveRTStream::UpdatePosition
                     ByteDisplacement = ByteDisplacement - (((ULONG)m_ullWritePosition + ByteDisplacement) % m_ulDmaBufferSize - m_ulCurrentWritePosition);
                 }
             }
+        }
+
+        if (m_pMiniport->IsSystemRenderPin(m_ulPin))
+        {
+            m_pMiniport->WriteLoopbackMix(
+                m_pDmaBuffer,
+                m_ulDmaBufferSize,
+                static_cast<ULONG>(
+                    m_ullLinearPosition % m_ulDmaBufferSize),
+                ByteDisplacement);
         }
 
         // If the last packet was rendered(read in the sample driver's case), send out an etw event.
@@ -1502,14 +1529,30 @@ VOID CMiniportWaveRTStream::WriteBytes
 
 Routine Description:
 
-This function writes the audio buffer using a sine wave generator
+This function writes capture data into the audio buffer.
 Arguments:
 
 ByteDisplacement - # of bytes to process.
 
 --*/
 {
+    if (m_pDmaBuffer == NULL || m_ulDmaBufferSize == 0)
+    {
+        return;
+    }
+
     ULONG bufferOffset = m_ullLinearPosition % m_ulDmaBufferSize;
+
+    if (m_pMiniport->IsLoopbackPin(m_ulPin))
+    {
+        m_pMiniport->ReadLoopbackMix(
+            m_pDmaBuffer,
+            m_ulDmaBufferSize,
+            bufferOffset,
+            ByteDisplacement,
+            &m_ullLoopbackReadPosition);
+        return;
+    }
 
     // Normally this will loop no more than once for a single wrap, but if
     // many bytes have been displaced then this may loops many times.
@@ -1853,5 +1896,3 @@ End:
     return;
 }
 //=============================================================================
-
-

@@ -187,6 +187,12 @@ Return Value:
         m_LoopbackStreams = NULL;
     }
 
+    if (m_LoopbackMixBuffer)
+    {
+        ExFreePoolWithTag(m_LoopbackMixBuffer, MINWAVERT_POOLTAG);
+        m_LoopbackMixBuffer = NULL;
+    }
+
     if (m_pAudioModules)
     {
         FreeStreamAudioModules(m_pAudioModules, GetAudioModuleListCount());
@@ -395,6 +401,9 @@ Return Value:
     m_SystemStreams                     = NULL;
     m_OffloadStreams                    = NULL;
     m_LoopbackStreams                   = NULL;
+    m_LoopbackMixBuffer                 = NULL;
+    m_LoopbackMixBufferSize             = 0;
+    m_LoopbackMixWritePosition          = 0;
     m_bGfxEnabled                       = FALSE;
     m_pbMuted                           = NULL;
     m_plVolumeLevel                     = NULL;
@@ -509,6 +518,18 @@ Return Value:
             {
                 return STATUS_INSUFFICIENT_RESOURCES;
             }
+
+            m_LoopbackMixBufferSize = 1152000;
+            m_LoopbackMixBuffer = (BYTE*)ExAllocatePool2(
+                POOL_FLAG_NON_PAGED,
+                m_LoopbackMixBufferSize,
+                MINWAVERT_POOLTAG);
+            if (m_LoopbackMixBuffer == NULL)
+            {
+                return STATUS_INSUFFICIENT_RESOURCES;
+            }
+            RtlZeroMemory(
+                m_LoopbackMixBuffer, m_LoopbackMixBufferSize);
         }
 
         if (IsOffloadSupported())
@@ -1189,6 +1210,133 @@ BOOL CMiniportWaveRT::IsKeywordDetectorPin(ULONG nPinId)
     return (pinType == KeywordCapturePin);
 }
 
+
+//=============================================================================
+#pragma code_seg()
+VOID
+CMiniportWaveRT::WriteLoopbackMix
+(
+    _In_reads_bytes_(ByteCount) const BYTE* Source,
+    _In_ ULONG SourceSize,
+    _In_ ULONG SourceOffset,
+    _In_ ULONG ByteCount
+)
+{
+    if (Source == NULL || SourceSize == 0 || ByteCount == 0 ||
+        m_LoopbackMixBuffer == NULL || m_LoopbackMixBufferSize == 0)
+    {
+        return;
+    }
+
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_LoopbackMixLock, &oldIrql);
+
+    ULONG sourceOffset = SourceOffset % SourceSize;
+    ULONG destinationOffset = static_cast<ULONG>(
+        m_LoopbackMixWritePosition % m_LoopbackMixBufferSize);
+    ULONG bytesRemaining = ByteCount;
+    while (bytesRemaining > 0)
+    {
+        ULONG copyBytes = min(
+            bytesRemaining,
+            min(SourceSize - sourceOffset,
+                m_LoopbackMixBufferSize - destinationOffset));
+        RtlCopyMemory(
+            m_LoopbackMixBuffer + destinationOffset,
+            Source + sourceOffset,
+            copyBytes);
+        bytesRemaining -= copyBytes;
+        sourceOffset = (sourceOffset + copyBytes) % SourceSize;
+        destinationOffset =
+            (destinationOffset + copyBytes) % m_LoopbackMixBufferSize;
+    }
+    m_LoopbackMixWritePosition += ByteCount;
+
+    KeReleaseSpinLock(&m_LoopbackMixLock, oldIrql);
+}
+
+VOID
+CMiniportWaveRT::ReadLoopbackMix
+(
+    _Out_writes_bytes_(ByteCount) BYTE* Destination,
+    _In_ ULONG DestinationSize,
+    _In_ ULONG DestinationOffset,
+    _In_ ULONG ByteCount,
+    _Inout_ ULONGLONG* ReadPosition
+)
+{
+    if (Destination == NULL || DestinationSize == 0 ||
+        ByteCount == 0 || ReadPosition == NULL)
+    {
+        return;
+    }
+
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_LoopbackMixLock, &oldIrql);
+
+    ULONGLONG writePosition = m_LoopbackMixWritePosition;
+    if (*ReadPosition > writePosition)
+    {
+        *ReadPosition = writePosition;
+    }
+    if (writePosition - *ReadPosition > m_LoopbackMixBufferSize)
+    {
+        *ReadPosition =
+            writePosition - m_LoopbackMixBufferSize;
+    }
+
+    ULONG availableBytes = static_cast<ULONG>(min(
+        static_cast<ULONGLONG>(ByteCount),
+        writePosition - *ReadPosition));
+    ULONG sourceOffset = m_LoopbackMixBufferSize == 0
+        ? 0
+        : static_cast<ULONG>(
+              *ReadPosition % m_LoopbackMixBufferSize);
+    ULONG destinationOffset = DestinationOffset % DestinationSize;
+    ULONG copiedBytes = 0;
+
+    while (copiedBytes < availableBytes)
+    {
+        ULONG copyBytes = min(
+            availableBytes - copiedBytes,
+            min(m_LoopbackMixBufferSize - sourceOffset,
+                DestinationSize - destinationOffset));
+        RtlCopyMemory(
+            Destination + destinationOffset,
+            m_LoopbackMixBuffer + sourceOffset,
+            copyBytes);
+        copiedBytes += copyBytes;
+        sourceOffset =
+            (sourceOffset + copyBytes) % m_LoopbackMixBufferSize;
+        destinationOffset =
+            (destinationOffset + copyBytes) % DestinationSize;
+    }
+    *ReadPosition += availableBytes;
+
+    ULONG silentBytes = ByteCount - availableBytes;
+    while (silentBytes > 0)
+    {
+        ULONG clearBytes = min(
+            silentBytes, DestinationSize - destinationOffset);
+        RtlZeroMemory(
+            Destination + destinationOffset, clearBytes);
+        silentBytes -= clearBytes;
+        destinationOffset =
+            (destinationOffset + clearBytes) % DestinationSize;
+    }
+
+    KeReleaseSpinLock(&m_LoopbackMixLock, oldIrql);
+}
+
+ULONGLONG
+CMiniportWaveRT::GetLoopbackMixWritePosition()
+{
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_LoopbackMixLock, &oldIrql);
+    ULONGLONG position = m_LoopbackMixWritePosition;
+    KeReleaseSpinLock(&m_LoopbackMixLock, oldIrql);
+    return position;
+}
 
 //=============================================================================
 #pragma code_seg("PAGE")
@@ -3896,8 +4044,5 @@ Exit:
 }
 
 #pragma code_seg()
-
-
-
 
 

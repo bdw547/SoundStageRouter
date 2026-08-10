@@ -3,6 +3,7 @@
 #include "ChannelRouter.h"
 
 #include <audioclient.h>
+#include <endpointvolume.h>
 #include <propkeydef.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <ks.h>
@@ -13,6 +14,7 @@
 #include <wrl/client.h>
 
 #include <condition_variable>
+#include <cmath>
 #include <mutex>
 #include <thread>
 
@@ -93,12 +95,15 @@ namespace soundstage::audio
         ComPtr<IMMDevice> device;
         ComPtr<IAudioClient> client;
         ComPtr<IAudioCaptureClient> capture;
+        ComPtr<IAudioEndpointVolume> endpointVolume;
         WAVEFORMATEX* waveFormat = nullptr;
         CaptureFormat format{};
         HANDLE eventHandle = nullptr;
         bool eventDriven = false;
         bool started = false;
         bool stopped = false;
+        ULONGLONG lastVolumeReadMs = 0;
+        float masterGain = 1.0f;
     };
 
     WindowsLoopbackCaptureBackend::WindowsLoopbackCaptureBackend()
@@ -180,6 +185,14 @@ namespace soundstage::audio
         result = impl_->device->Activate(
             __uuidof(IAudioClient), CLSCTX_ALL, nullptr,
             reinterpret_cast<void**>(impl_->client.GetAddressOf()));
+        if (FAILED(result))
+        {
+            return CaptureResult(result);
+        }
+        result = impl_->device->Activate(
+            __uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr,
+            reinterpret_cast<void**>(
+                impl_->endpointVolume.GetAddressOf()));
         if (FAILED(result))
         {
             return CaptureResult(result);
@@ -294,6 +307,23 @@ namespace soundstage::audio
         packet.frames = frames;
         packet.silent =
             (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0;
+        const ULONGLONG nowMs = GetTickCount64();
+        if (nowMs - impl_->lastVolumeReadMs >= 100)
+        {
+            BOOL muted = FALSE;
+            float volumeDb = 0.0f;
+            if (SUCCEEDED(impl_->endpointVolume->GetMute(&muted)) &&
+                (muted ||
+                 SUCCEEDED(impl_->endpointVolume->GetMasterVolumeLevel(
+                     &volumeDb))))
+            {
+                impl_->masterGain = muted
+                    ? 0.0f
+                    : std::pow(10.0f, volumeDb / 20.0f);
+                impl_->lastVolumeReadMs = nowMs;
+            }
+        }
+        packet.masterGain = impl_->masterGain;
         packet.samples = packet.silent
             ? std::span<const float>{}
             : std::span(
@@ -320,6 +350,7 @@ namespace soundstage::audio
             impl_->client->Stop();
         }
         impl_->capture.Reset();
+        impl_->endpointVolume.Reset();
         impl_->client.Reset();
         impl_->device.Reset();
         impl_->enumerator.Reset();
@@ -426,6 +457,12 @@ namespace soundstage::audio
                                     static_cast<std::size_t>(frame) * 6;
                                 input = {sample[0], sample[1], sample[2],
                                          sample[3], sample[4], sample[5]};
+                                input.frontLeft *= packet.masterGain;
+                                input.frontRight *= packet.masterGain;
+                                input.frontCenter *= packet.masterGain;
+                                input.lfe *= packet.masterGain;
+                                input.backLeft *= packet.masterGain;
+                                input.backRight *= packet.masterGain;
                             }
                             static_cast<void>(ring->Push(
                                 RouteSurroundFrame(input, rearFill)));

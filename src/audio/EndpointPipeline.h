@@ -22,6 +22,7 @@ namespace soundstage::audio
         std::uint32_t maximumRenderFrames = 0;
         PlaybackMode mode = PlaybackMode::TestSignals;
         MasterFrameRingBuffer* masterFrames = nullptr;
+        float gain = 1.0f;
     };
 
     class EndpointPipeline final : private IFrameSource
@@ -53,6 +54,7 @@ namespace soundstage::audio
         std::vector<StereoFrame> scratch_;
         std::atomic<std::uint32_t> delayMs_{0};
         std::atomic<double> correctionPpm_{0.0};
+        float gain_ = 1.0f;
         bool ready_ = false;
     };
 }

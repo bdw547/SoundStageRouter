@@ -8,6 +8,7 @@ namespace soundstage::audio
 {
     inline constexpr std::uint32_t MasterSampleRate = 48000;
     inline constexpr std::uint32_t MaximumDelayMs = 2000;
+    inline constexpr int MaximumLevelPercent = 100;
     inline constexpr double MaximumCorrectionPpm = 500.0;
 
     enum class SpeakerRole { Front, Rear };
@@ -35,6 +36,7 @@ namespace soundstage::audio
         std::wstring endpointId;
         std::uint32_t delayMs = 0;
         bool isClockReference = false;
+        float gain = 1.0f;
     };
 
     struct RunConfiguration
@@ -101,5 +103,13 @@ namespace soundstage::audio
         const std::uint32_t milliseconds) noexcept
     {
         return static_cast<std::uint64_t>(milliseconds) * MasterSampleRate / 1000;
+    }
+
+    [[nodiscard]] constexpr int ClampLevelPercent(
+        const int value) noexcept
+    {
+        return value < 0 ? 0 :
+               value > MaximumLevelPercent ? MaximumLevelPercent :
+               value;
     }
 }

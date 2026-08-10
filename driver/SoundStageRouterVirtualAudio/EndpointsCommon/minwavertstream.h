@@ -119,6 +119,7 @@ protected:
     PLONG                       m_plPeakMeter;
     PWAVEFORMATEXTENSIBLE       m_pWfExt;
     ULONG                       m_ulContentId;
+    ULONGLONG                   m_ullLoopbackReadPosition;
     CSaveData                   m_SaveData;
     ToneGenerator               m_ToneGenerator;
     GUID                        m_SignalProcessingMode;
@@ -316,5 +317,4 @@ private:
 };
 typedef CMiniportWaveRTStream *PCMiniportWaveRTStream;
 #endif // _SYSVAD_MINWAVERTSTREAM_H_
-
 

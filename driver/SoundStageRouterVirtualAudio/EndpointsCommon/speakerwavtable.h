@@ -11,10 +11,10 @@ Abstract:
     Declaration of wave miniport tables for the render endpoints.
 
     SoundStage Router adaptation:
-    Reduced to a single 48 kHz, 32-bit IEEE float, 5.1 render endpoint with
-    loopback support. The offload pin is intentionally retained so the SysVAD
-    WaveRT render contract remains close to upstream while exposing only the
-    required shared-mode format.
+    Reduced to a single 48 kHz, 32-bit PCM, 5.1 WaveRT device format with
+    loopback support. The Windows shared-mode audio engine exposes the float
+    mix format consumed by the router. The offload pin is intentionally
+    retained so the SysVAD WaveRT render contract remains close to upstream.
 
 --*/
 
@@ -43,7 +43,7 @@ Abstract:
 #define SPEAKER_LOOPBACK_MIN_SAMPLE_RATE            SPEAKER_HOST_MIN_SAMPLE_RATE
 #define SPEAKER_LOOPBACK_MAX_SAMPLE_RATE            SPEAKER_HOST_MAX_SAMPLE_RATE
 
-#define SPEAKER_MAX_INPUT_SYSTEM_STREAMS            6
+#define SPEAKER_MAX_INPUT_SYSTEM_STREAMS            1
 #define SPEAKER_MAX_INPUT_OFFLOAD_STREAMS           MAX_INPUT_OFFLOAD_STREAMS
 #define SPEAKER_MAX_OUTPUT_LOOPBACK_STREAMS         MAX_OUTPUT_LOOPBACK_STREAMS
 
@@ -57,7 +57,7 @@ KSDATAFORMAT_WAVEFORMATEXTENSIBLE SpeakerAudioEngineSupportedDeviceFormats[] =
             0,
             0,
             STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
-            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT),
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
             STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
         },
         {
@@ -72,7 +72,7 @@ KSDATAFORMAT_WAVEFORMATEXTENSIBLE SpeakerAudioEngineSupportedDeviceFormats[] =
             },
             32,
             KSAUDIO_SPEAKER_5POINT1,
-            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM)
         }
     }
 };
@@ -87,7 +87,7 @@ KSDATAFORMAT_WAVEFORMATEXTENSIBLE SpeakerHostPinSupportedDeviceFormats[] =
             0,
             0,
             STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
-            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT),
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
             STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
         },
         {
@@ -102,7 +102,7 @@ KSDATAFORMAT_WAVEFORMATEXTENSIBLE SpeakerHostPinSupportedDeviceFormats[] =
             },
             32,
             KSAUDIO_SPEAKER_5POINT1,
-            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM)
         }
     }
 };
@@ -117,7 +117,7 @@ KSDATAFORMAT_WAVEFORMATEXTENSIBLE SpeakerOffloadPinSupportedDeviceFormats[] =
             0,
             0,
             STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
-            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT),
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
             STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
         },
         {
@@ -132,7 +132,7 @@ KSDATAFORMAT_WAVEFORMATEXTENSIBLE SpeakerOffloadPinSupportedDeviceFormats[] =
             },
             32,
             KSAUDIO_SPEAKER_5POINT1,
-            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM)
         }
     }
 };
@@ -205,7 +205,7 @@ KSDATARANGE_AUDIO SpeakerPinDataRangesStream[] =
             0,
             0,
             STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
-            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT),
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
             STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
         },
         SPEAKER_HOST_MAX_CHANNELS,
@@ -221,7 +221,7 @@ KSDATARANGE_AUDIO SpeakerPinDataRangesStream[] =
             0,
             0,
             STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
-            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT),
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
             STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
         },
         SPEAKER_OFFLOAD_MAX_CHANNELS,
@@ -237,7 +237,7 @@ KSDATARANGE_AUDIO SpeakerPinDataRangesStream[] =
             0,
             0,
             STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
-            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_IEEE_FLOAT),
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
             STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
         },
         SPEAKER_LOOPBACK_MAX_CHANNELS,

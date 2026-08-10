@@ -29,7 +29,8 @@ Judgement call: the offload render pin was **kept**. Removing it cleanly from Sy
 The only shared-mode wave format exposed by the speaker endpoint is:
 
 - 48000 Hz
-- 32-bit IEEE float
+- 32-bit PCM WaveRT transport (the Windows shared-mode engine exposes float32
+  mix and loopback audio to the router)
 - 6 channels
 - `WAVEFORMATEXTENSIBLE`
 - `dwChannelMask = KSAUDIO_SPEAKER_5POINT1` (`FL|FR|FC|LFE|BL|BR`, mask `0x3F`)

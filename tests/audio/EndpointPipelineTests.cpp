@@ -155,3 +155,24 @@ TEST(Pipeline_SystemModeConsumesMasterFrames)
     EXPECT_NEAR(samples[0], 0.25, 1e-6);
     EXPECT_NEAR(samples[1], -0.25, 1e-6);
 }
+
+TEST(Pipeline_AppliesIndependentEndpointGain)
+{
+    MasterFrameRingBuffer ring(16);
+    for (int index = 0; index < 12; ++index)
+    {
+        EXPECT_TRUE(ring.Push({{0.8f, -0.4f}, {0.0f, 0.0f}}));
+    }
+    EndpointPipeline pipeline;
+    PipelineConfiguration config{
+        SpeakerRole::Front, TestPattern::PairedClicks, 0,
+        EndpointMixFormat{48000, 2, SampleEncoding::Float32, 8}, 4,
+        PlaybackMode::SystemAudio, &ring, 0.25f};
+    EXPECT_TRUE(pipeline.Reset(config));
+    std::array<std::byte, 4 * 8> output{};
+    EXPECT_TRUE(pipeline.Render(output, 4));
+    const float* samples =
+        reinterpret_cast<const float*>(output.data());
+    EXPECT_NEAR(samples[0], 0.2, 1e-6);
+    EXPECT_NEAR(samples[1], -0.1, 1e-6);
+}

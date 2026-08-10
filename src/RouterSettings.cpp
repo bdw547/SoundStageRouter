@@ -157,6 +157,10 @@ namespace soundstage
             ReadString(path_, L"FrontDelayMs", L"0"));
         const std::optional<int> rearDelay = ParseDelay(
             ReadString(path_, L"RearDelayMs", L"0"));
+        const std::optional<int> frontLevel = ParseDelay(
+            ReadString(path_, L"FrontLevelPercent", L"100"));
+        const std::optional<int> rearLevel = ParseDelay(
+            ReadString(path_, L"RearLevelPercent", L"100"));
         const std::wstring pattern = ReadString(
             path_, L"TestPattern", L"PairedClicks");
         const std::wstring mode = ReadString(
@@ -165,6 +169,10 @@ namespace soundstage
             path_, L"RearFill", L"Off");
         settings.frontDelayMs = frontDelay.value_or(0);
         settings.rearDelayMs = rearDelay.value_or(0);
+        settings.frontLevelPercent = audio::ClampLevelPercent(
+            frontLevel.value_or(100));
+        settings.rearLevelPercent = audio::ClampLevelPercent(
+            rearLevel.value_or(100));
         settings.lastPattern = TestPatternFromString(pattern);
         settings.mode = mode == L"TestSignals"
             ? audio::PlaybackMode::TestSignals
@@ -176,6 +184,7 @@ namespace soundstage
                 : audio::RearFillMode::Off;
         settings.loadAdjustedValues =
             !frontDelay.has_value() || !rearDelay.has_value() ||
+            !frontLevel.has_value() || !rearLevel.has_value() ||
             !IsKnownPatternString(pattern) ||
             !IsKnownModeString(mode) ||
             !IsKnownRearFillString(rearFill);
@@ -190,6 +199,10 @@ namespace soundstage
             audio::ClampDelayMs(settings.frontDelayMs)));
         WriteString(path_, L"RearDelayMs", std::to_wstring(
             audio::ClampDelayMs(settings.rearDelayMs)));
+        WriteString(path_, L"FrontLevelPercent", std::to_wstring(
+            audio::ClampLevelPercent(settings.frontLevelPercent)));
+        WriteString(path_, L"RearLevelPercent", std::to_wstring(
+            audio::ClampLevelPercent(settings.rearLevelPercent)));
         WriteString(path_, L"TestPattern",
                     std::wstring(TestPatternToString(settings.lastPattern)));
         WriteString(path_, L"Mode",

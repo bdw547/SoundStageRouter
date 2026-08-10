@@ -42,6 +42,7 @@ namespace soundstage::audio
         std::span<const float> samples;
         std::uint32_t frames = 0;
         bool silent = false;
+        float masterGain = 1.0f;
     };
 
     class ILoopbackCaptureBackend
