@@ -1,5 +1,6 @@
 #include "../TestHarness.h"
 #include "../../src/audio/AudioTypes.h"
+#include "../../src/audio/VirtualSurroundContract.h"
 
 using namespace soundstage::audio;
 
@@ -20,4 +21,17 @@ TEST(AudioTypes_ConvertsMillisecondsOnTheMasterTimeline)
 TEST(AudioTypes_DefaultConfigurationReferencesRear)
 {
     EXPECT_EQ(RunConfiguration{}.clockReferenceRole, SpeakerRole::Rear);
+}
+
+TEST(AudioTypes_DetectsOnlySupportedVirtualSurroundFormats)
+{
+    EXPECT_EQ(DetectVirtualSurroundFormat(
+        {48000, 6, 32, 24, 0x003Fu, true}),
+        VirtualSurroundFormat::FivePointOne);
+    EXPECT_EQ(DetectVirtualSurroundFormat(
+        {48000, 8, 32, 32, 0x063Fu, true}),
+        VirtualSurroundFormat::SevenPointOne);
+    EXPECT_EQ(DetectVirtualSurroundFormat(
+        {48000, 8, 32, 32, 0x003Fu, true}),
+        VirtualSurroundFormat::Unsupported);
 }

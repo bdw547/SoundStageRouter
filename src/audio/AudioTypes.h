@@ -28,6 +28,14 @@ namespace soundstage::audio
         float lfe = 0.0f;
         float backLeft = 0.0f;
         float backRight = 0.0f;
+        float sideLeft = 0.0f;
+        float sideRight = 0.0f;
+    };
+
+    struct SurroundMixLevels
+    {
+        float back = 1.0f;
+        float side = 1.0f;
     };
 
     struct EndpointRoute

@@ -4,9 +4,10 @@
 
 namespace soundstage::audio
 {
-    // FL/FR outputs include FC at -3 dB and LFE at -6 dB. Native BL/BR
-    // always win; rear fill is used only while both native rear channels
-    // are silent.
+    // FL/FR outputs include FC at -3 dB and LFE at -6 dB. Native BL/BR/SL/SR
+    // always win; rear fill is used only while all native rear channels are
+    // silent.
     [[nodiscard]] RoleFrame RouteSurroundFrame(
-        const SurroundFrame& input, RearFillMode rearFill) noexcept;
+        const SurroundFrame& input, RearFillMode rearFill,
+        SurroundMixLevels levels = {}) noexcept;
 }

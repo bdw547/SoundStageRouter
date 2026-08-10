@@ -19,7 +19,8 @@ namespace soundstage::audio
     }
 
     RoleFrame RouteSurroundFrame(
-        const SurroundFrame& input, const RearFillMode rearFill) noexcept
+        const SurroundFrame& input, const RearFillMode rearFill,
+        const SurroundMixLevels levels) noexcept
     {
         RoleFrame output;
         output.front.left = Limit(
@@ -29,13 +30,18 @@ namespace soundstage::audio
             input.frontRight + CenterGain * input.frontCenter +
             LfeGain * input.lfe);
 
+        const float backGain = std::clamp(levels.back, 0.0f, 1.0f);
+        const float sideGain = std::clamp(levels.side, 0.0f, 1.0f);
         const bool nativeRear =
             std::abs(input.backLeft) > SilenceThreshold ||
-            std::abs(input.backRight) > SilenceThreshold;
+            std::abs(input.backRight) > SilenceThreshold ||
+            std::abs(input.sideLeft) > SilenceThreshold ||
+            std::abs(input.sideRight) > SilenceThreshold;
         if (nativeRear || rearFill == RearFillMode::Off)
         {
             output.rear = {
-                Limit(input.backLeft), Limit(input.backRight)};
+                Limit(backGain * input.backLeft + sideGain * input.sideLeft),
+                Limit(backGain * input.backRight + sideGain * input.sideRight)};
         }
         else if (rearFill == RearFillMode::Duplicate)
         {
