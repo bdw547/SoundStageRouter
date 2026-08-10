@@ -13,6 +13,7 @@
 #include <propvarutil.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <condition_variable>
 #include <cmath>
 #include <mutex>
@@ -22,6 +23,8 @@ using Microsoft::WRL::ComPtr;
 
 namespace soundstage::audio
 {
+    static_assert(std::atomic<float>::is_always_lock_free);
+
     namespace
     {
         [[nodiscard]] BackendResult CaptureResult(
@@ -77,16 +80,24 @@ namespace soundstage::audio
                 return L"Virtual endpoint capture failed";
             }
         }
+
+        [[nodiscard]] VirtualSurroundFormat DetectCaptureFormat(
+            const CaptureFormat& format) noexcept
+        {
+            return DetectVirtualSurroundFormat({
+                format.sampleRate,
+                format.channels,
+                format.bitsPerSample,
+                format.blockAlign,
+                format.channelMask,
+                format.floatingPoint});
+        }
     }
 
     bool IsVirtualCaptureFormat(const CaptureFormat& format) noexcept
     {
-        return format.sampleRate == MasterSampleRate &&
-               format.channels == 6 &&
-               format.bitsPerSample == 32 &&
-               format.blockAlign == 24 &&
-               format.channelMask == VirtualChannelMask &&
-               format.floatingPoint;
+        return DetectCaptureFormat(format) !=
+            VirtualSurroundFormat::Unsupported;
     }
 
     struct WindowsLoopbackCaptureBackend::Impl
@@ -328,7 +339,8 @@ namespace soundstage::audio
             ? std::span<const float>{}
             : std::span(
                   reinterpret_cast<const float*>(data),
-                  static_cast<std::size_t>(frames) * 6);
+                  static_cast<std::size_t>(frames) *
+                      impl_->format.channels);
         return {};
     }
 
@@ -390,10 +402,15 @@ namespace soundstage::audio
                 {
                     throw result.faultCode;
                 }
-                if (!IsVirtualCaptureFormat(backend->Format()))
+                const CaptureFormat captureFormat = backend->Format();
+                const VirtualSurroundFormat detectedFormat =
+                    DetectCaptureFormat(captureFormat);
+                if (detectedFormat == VirtualSurroundFormat::Unsupported)
                 {
                     throw VirtualEndpointFormatCode;
                 }
+                surroundFormat.store(
+                    detectedFormat, std::memory_order_release);
                 result = backend->InitializeSharedLoopback();
                 if (!result.ok)
                 {
@@ -454,18 +471,30 @@ namespace soundstage::audio
                             {
                                 const float* sample =
                                     packet.samples.data() +
-                                    static_cast<std::size_t>(frame) * 6;
-                                input = {sample[0], sample[1], sample[2],
-                                         sample[3], sample[4], sample[5]};
-                                input.frontLeft *= packet.masterGain;
-                                input.frontRight *= packet.masterGain;
-                                input.frontCenter *= packet.masterGain;
-                                input.lfe *= packet.masterGain;
-                                input.backLeft *= packet.masterGain;
-                                input.backRight *= packet.masterGain;
+                                    static_cast<std::size_t>(frame) *
+                                        captureFormat.channels;
+                                input = {
+                                    sample[0] * packet.masterGain,
+                                    sample[1] * packet.masterGain,
+                                    sample[2] * packet.masterGain,
+                                    sample[3] * packet.masterGain,
+                                    sample[4] * packet.masterGain,
+                                    sample[5] * packet.masterGain};
+                                if (detectedFormat ==
+                                    VirtualSurroundFormat::SevenPointOne)
+                                {
+                                    input.sideLeft =
+                                        sample[6] * packet.masterGain;
+                                    input.sideRight =
+                                        sample[7] * packet.masterGain;
+                                }
                             }
+                            const SurroundMixLevels mixLevels{
+                                backGain.load(std::memory_order_acquire),
+                                sideGain.load(std::memory_order_acquire)};
                             static_cast<void>(ring->Push(
-                                RouteSurroundFrame(input, rearFill)));
+                                RouteSurroundFrame(
+                                    input, rearFill, mixLevels)));
                         }
                         packetCount.fetch_add(1, std::memory_order_relaxed);
                         if (packet.silent)
@@ -521,6 +550,10 @@ namespace soundstage::audio
         std::atomic<std::uint64_t> silentFrameCount{0};
         std::atomic<std::uint32_t> fault{0};
         std::atomic<bool> startDone{false};
+        std::atomic<VirtualSurroundFormat> surroundFormat{
+            VirtualSurroundFormat::Unsupported};
+        std::atomic<float> backGain{1.0f};
+        std::atomic<float> sideGain{1.0f};
         bool prepareDone = false;
         bool startRequested = false;
         bool workerDone = false;
@@ -592,6 +625,17 @@ namespace soundstage::audio
                       fault == 0 ? CaptureWorkerExceptionCode : fault));
     }
 
+    void WasapiLoopbackCapture::SetSurroundMixLevels(
+        const SurroundMixLevels levels) noexcept
+    {
+        impl_->backGain.store(
+            std::clamp(levels.back, 0.0f, 1.0f),
+            std::memory_order_release);
+        impl_->sideGain.store(
+            std::clamp(levels.side, 0.0f, 1.0f),
+            std::memory_order_release);
+    }
+
     CaptureTelemetry WasapiLoopbackCapture::Snapshot() noexcept
     {
         CaptureTelemetry result;
@@ -604,6 +648,8 @@ namespace soundstage::audio
         result.silentFrameCount =
             impl_->silentFrameCount.load(std::memory_order_relaxed);
         result.faultCode = impl_->fault.load(std::memory_order_acquire);
+        result.surroundFormat =
+            impl_->surroundFormat.load(std::memory_order_acquire);
         return result;
     }
 

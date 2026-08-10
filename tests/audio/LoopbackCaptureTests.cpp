@@ -27,46 +27,122 @@ namespace
         }
         BackendResult GetPacket(CapturePacket& value) override
         {
-            if (packetGiven)
+            if (packetsGiven >=
+                packetsAvailable.load(std::memory_order_acquire))
             {
                 value = {};
             }
             else
             {
-                packetGiven = true;
+                ++packetsGiven;
                 value.frames = 1;
                 value.silent = silent;
                 value.masterGain = masterGain;
                 if (!silent)
                 {
-                    value.samples = samples;
+                    value.samples = std::span(
+                        samples.data(), format.channels);
                 }
             }
             return {};
         }
         BackendResult ReleasePacket(std::uint32_t) override
         {
-            released.store(true);
+            released.fetch_add(1, std::memory_order_release);
             return {};
         }
         void Stop() noexcept override {}
 
         CaptureFormat format{48000, 6, 32, 24, 0x3F, true};
         BackendResult discoverResult{};
-        std::array<float, 6> samples{0.2f, 0.3f, 0, 0, 0.4f, 0.5f};
-        std::atomic<bool> released{false};
+        std::array<float, 8> samples{
+            0.2f, 0.3f, 0, 0, 0.4f, 0.5f, 0, 0};
+        std::atomic<unsigned> packetsAvailable{1};
+        std::atomic<unsigned> released{0};
         bool silent = false;
-        bool packetGiven = false;
+        unsigned packetsGiven = 0;
         float masterGain = 1.0f;
     };
+
+    void WaitForRelease(
+        const FakeCaptureBackend& backend, const unsigned count)
+    {
+        for (int wait = 0;
+             wait < 100 &&
+             backend.released.load(std::memory_order_acquire) < count;
+             ++wait)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
 }
 
 TEST(LoopbackCapture_ValidatesExactVirtualFormat)
 {
     EXPECT_TRUE(IsVirtualCaptureFormat({48000, 6, 32, 24, 0x3F, true}));
+    EXPECT_TRUE(IsVirtualCaptureFormat(
+        {48000, 8, 32, 32, 0x063F, true}));
     EXPECT_TRUE(!IsVirtualCaptureFormat({44100, 6, 32, 24, 0x3F, true}));
     EXPECT_TRUE(!IsVirtualCaptureFormat({48000, 2, 32, 8, 3, true}));
     EXPECT_TRUE(!IsVirtualCaptureFormat({48000, 6, 32, 24, 0x3F, false}));
+    EXPECT_TRUE(!IsVirtualCaptureFormat(
+        {48000, 8, 32, 32, 0x003F, true}));
+}
+
+TEST(LoopbackCapture_DecodesSevenPointOneAndPublishesLiveLevels)
+{
+    auto backend = std::make_unique<FakeCaptureBackend>();
+    FakeCaptureBackend* observed = backend.get();
+    observed->format = {48000, 8, 32, 32, 0x063F, true};
+    observed->samples = {
+        0, 0, 0, 0, 0.25f, -0.25f, 0.5f, -0.5f};
+    WasapiLoopbackCapture capture(std::move(backend));
+    MasterFrameRingBuffer ring(8);
+
+    EXPECT_TRUE(capture.Prepare(ring, RearFillMode::Off, {}).ok);
+    EXPECT_EQ(capture.Snapshot().surroundFormat,
+              VirtualSurroundFormat::SevenPointOne);
+    EXPECT_TRUE(capture.Start().ok);
+    WaitForRelease(*observed, 1);
+
+    RoleFrame frame;
+    std::uint64_t sequence = 99;
+    EXPECT_TRUE(ring.Read(0, frame, sequence));
+    EXPECT_NEAR(frame.rear.left, 0.75, 1e-6);
+    EXPECT_NEAR(frame.rear.right, -0.75, 1e-6);
+
+    capture.SetSurroundMixLevels({0.0f, 0.5f});
+    observed->packetsAvailable.store(2, std::memory_order_release);
+    WaitForRelease(*observed, 2);
+    capture.Stop();
+
+    EXPECT_TRUE(ring.Read(0, frame, sequence));
+    EXPECT_NEAR(frame.rear.left, 0.25, 1e-6);
+    EXPECT_NEAR(frame.rear.right, -0.25, 1e-6);
+}
+
+TEST(LoopbackCapture_DecodesFivePointOneWithoutReadingSideChannels)
+{
+    auto backend = std::make_unique<FakeCaptureBackend>();
+    FakeCaptureBackend* observed = backend.get();
+    observed->samples = {
+        0, 0, 0, 0, 0.25f, -0.25f, 0.5f, -0.5f};
+    WasapiLoopbackCapture capture(std::move(backend));
+    MasterFrameRingBuffer ring(8);
+
+    capture.SetSurroundMixLevels({0.0f, 1.0f});
+    EXPECT_TRUE(capture.Prepare(ring, RearFillMode::Off, {}).ok);
+    EXPECT_EQ(capture.Snapshot().surroundFormat,
+              VirtualSurroundFormat::FivePointOne);
+    EXPECT_TRUE(capture.Start().ok);
+    WaitForRelease(*observed, 1);
+    capture.Stop();
+
+    RoleFrame frame;
+    std::uint64_t sequence = 99;
+    EXPECT_TRUE(ring.Read(0, frame, sequence));
+    EXPECT_NEAR(frame.rear.left, 0.0, 1e-7);
+    EXPECT_NEAR(frame.rear.right, 0.0, 1e-7);
 }
 
 TEST(LoopbackCapture_ConvertsSilentPacketToAlignedZeroFrame)
@@ -78,10 +154,7 @@ TEST(LoopbackCapture_ConvertsSilentPacketToAlignedZeroFrame)
     MasterFrameRingBuffer ring(8);
     EXPECT_TRUE(capture.Prepare(ring, RearFillMode::Duplicate, {}).ok);
     EXPECT_TRUE(capture.Start().ok);
-    for (int wait = 0; wait < 100 && !observed->released.load(); ++wait)
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    WaitForRelease(*observed, 1);
     capture.Stop();
     RoleFrame frame;
     std::uint64_t sequence = 99;
@@ -95,7 +168,7 @@ TEST(LoopbackCapture_ConvertsSilentPacketToAlignedZeroFrame)
 TEST(LoopbackCapture_RejectsWrongInjectedFormat)
 {
     auto backend = std::make_unique<FakeCaptureBackend>();
-    backend->format.sampleRate = 44100;
+    backend->format = {48000, 8, 32, 32, 0x003F, true};
     WasapiLoopbackCapture capture(std::move(backend));
     MasterFrameRingBuffer ring(8);
     const SessionResult result =
@@ -108,23 +181,23 @@ TEST(LoopbackCapture_AppliesWindowsMasterGain)
 {
     auto backend = std::make_unique<FakeCaptureBackend>();
     FakeCaptureBackend* observed = backend.get();
+    observed->format = {48000, 8, 32, 32, 0x063F, true};
+    observed->samples = {
+        0.2f, 0.3f, 0, 0, 0.4f, 0.5f, 0.6f, 0.7f};
     observed->masterGain = 0.25f;
     WasapiLoopbackCapture capture(std::move(backend));
     MasterFrameRingBuffer ring(8);
     EXPECT_TRUE(capture.Prepare(ring, RearFillMode::Off, {}).ok);
     EXPECT_TRUE(capture.Start().ok);
-    for (int wait = 0; wait < 100 && !observed->released.load(); ++wait)
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
+    WaitForRelease(*observed, 1);
     capture.Stop();
     RoleFrame frame;
     std::uint64_t sequence = 99;
     EXPECT_TRUE(ring.Read(0, frame, sequence));
     EXPECT_NEAR(frame.front.left, 0.05, 1e-6);
     EXPECT_NEAR(frame.front.right, 0.075, 1e-6);
-    EXPECT_NEAR(frame.rear.left, 0.1, 1e-6);
-    EXPECT_NEAR(frame.rear.right, 0.125, 1e-6);
+    EXPECT_NEAR(frame.rear.left, 0.25, 1e-6);
+    EXPECT_NEAR(frame.rear.right, 0.3, 1e-6);
 }
 
 TEST(LoopbackCapture_PropagatesMissingAndDuplicateDiscovery)

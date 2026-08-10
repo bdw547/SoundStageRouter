@@ -3,6 +3,7 @@
 #include "AudioTypes.h"
 #include "EndpointSession.h"
 #include "MasterFrameRingBuffer.h"
+#include "VirtualSurroundContract.h"
 #include "WasapiBackend.h"
 
 #include <atomic>
@@ -15,10 +16,9 @@
 namespace soundstage::audio
 {
     inline constexpr wchar_t VirtualEndpointName[] =
-        L"SoundStage Router 5.1";
+        L"SoundStage Router Surround";
     inline constexpr wchar_t VirtualDriverInterfaceName[] =
         L"SoundStage Router Virtual Audio (WDM)";
-    inline constexpr std::uint32_t VirtualChannelMask = 0x0000003Fu;
     inline constexpr std::uint32_t VirtualEndpointMissingCode = 0x3001u;
     inline constexpr std::uint32_t VirtualEndpointDuplicateCode = 0x3002u;
     inline constexpr std::uint32_t VirtualEndpointFormatCode = 0x3003u;
@@ -68,6 +68,8 @@ namespace soundstage::audio
         std::uint32_t faultCode = 0;
         std::uint64_t packetCount = 0;
         std::uint64_t silentFrameCount = 0;
+        VirtualSurroundFormat surroundFormat =
+            VirtualSurroundFormat::Unsupported;
     };
 
     class ILoopbackCapture
@@ -78,6 +80,8 @@ namespace soundstage::audio
             MasterFrameRingBuffer& ring, RearFillMode rearFill,
             std::stop_token stopToken) = 0;
         virtual SessionResult Start() = 0;
+        virtual void SetSurroundMixLevels(
+            SurroundMixLevels) noexcept {}
         virtual CaptureTelemetry Snapshot() noexcept = 0;
         virtual void Stop() noexcept = 0;
     };
@@ -122,6 +126,8 @@ namespace soundstage::audio
             MasterFrameRingBuffer& ring, RearFillMode rearFill,
             std::stop_token stopToken) override;
         SessionResult Start() override;
+        void SetSurroundMixLevels(
+            SurroundMixLevels levels) noexcept override;
         CaptureTelemetry Snapshot() noexcept override;
         void Stop() noexcept override;
 
