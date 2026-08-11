@@ -21,10 +21,11 @@
 - Do not allocate, lock, log, access files, or call UI/COM APIs in per-frame routing code.
 - Build x64 only with PlatformToolset `v145` and Windows SDK `10.0.28000.0`.
 
-## Execution Evidence
+## [Execution Evidence](../../testing/dual-format-execution-evidence.md)
 
 The checked steps below are backed by the committed implementation history and
-the validation reported when each task completed:
+the validation reported when each task completed. The linked durable record
+contains the commands, retained output excerpts, and explicit evidence limits.
 
 | Task | Commit or range | Reported validation |
 |---:|---|---|
