@@ -12,7 +12,7 @@ Abstract:
 
     SoundStage Router adaptation:
     Kept as a single line-out topology for the trimmed render-only endpoint and
-    updated the jack description to advertise a 5.1 speaker layout.
+    updated the jack description to advertise the maximum 7.1 speaker layout.
 
 --*/
 
@@ -85,7 +85,7 @@ PCPIN_DESCRIPTOR SpeakerTopoMiniportPins[] =
 static
 KSJACK_DESCRIPTION SpeakerJackDescBridge =
 {
-    KSAUDIO_SPEAKER_5POINT1,
+    KSAUDIO_SPEAKER_7POINT1_SURROUND,
     0xB3C98C,
     eConnTypeUnknown,
     eGeoLocFront,

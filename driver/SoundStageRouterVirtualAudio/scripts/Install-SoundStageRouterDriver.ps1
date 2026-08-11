@@ -72,5 +72,5 @@ if ($PSCmdlet.ShouldProcess('Root\SoundStageRouterVirtualAudio', 'Create root de
     }
 }
 
-Write-Host 'SoundStage Router 5.1 device created. A reboot may be required before the endpoint appears.'
+Write-Host 'SoundStage Router Surround device created. A reboot may be required before the endpoint appears.'
 Write-Host "Diagnostics: `"$devcon`" status `"Root\SoundStageRouterVirtualAudio`""

@@ -11,7 +11,7 @@ Abstract:
     Declaration of wave miniport tables for the render endpoints.
 
     SoundStage Router adaptation:
-    Reduced to a single 48 kHz, 32-bit PCM, 5.1 WaveRT device format with
+    Reduced to 48 kHz, 32-bit PCM, 7.1 and 5.1 WaveRT device formats with
     loopback support. The Windows shared-mode audio engine exposes the float
     mix format consumed by the router. The offload pin is intentionally
     retained so the SysVAD WaveRT render contract remains close to upstream.
@@ -23,21 +23,21 @@ Abstract:
 
 #include "simple.h"
 
-#define SPEAKER_DEVICE_MAX_CHANNELS                 6
+#define SPEAKER_DEVICE_MAX_CHANNELS                 8
 
-#define SPEAKER_HOST_MAX_CHANNELS                   6
+#define SPEAKER_HOST_MAX_CHANNELS                   8
 #define SPEAKER_HOST_MIN_BITS_PER_SAMPLE            32
 #define SPEAKER_HOST_MAX_BITS_PER_SAMPLE            32
 #define SPEAKER_HOST_MIN_SAMPLE_RATE                48000
 #define SPEAKER_HOST_MAX_SAMPLE_RATE                48000
 
-#define SPEAKER_OFFLOAD_MAX_CHANNELS                6
+#define SPEAKER_OFFLOAD_MAX_CHANNELS                8
 #define SPEAKER_OFFLOAD_MIN_BITS_PER_SAMPLE         32
 #define SPEAKER_OFFLOAD_MAX_BITS_PER_SAMPLE         32
 #define SPEAKER_OFFLOAD_MIN_SAMPLE_RATE             48000
 #define SPEAKER_OFFLOAD_MAX_SAMPLE_RATE             48000
 
-#define SPEAKER_LOOPBACK_MAX_CHANNELS               SPEAKER_HOST_MAX_CHANNELS
+#define SPEAKER_LOOPBACK_MAX_CHANNELS               8
 #define SPEAKER_LOOPBACK_MIN_BITS_PER_SAMPLE        SPEAKER_HOST_MIN_BITS_PER_SAMPLE
 #define SPEAKER_LOOPBACK_MAX_BITS_PER_SAMPLE        SPEAKER_HOST_MAX_BITS_PER_SAMPLE
 #define SPEAKER_LOOPBACK_MIN_SAMPLE_RATE            SPEAKER_HOST_MIN_SAMPLE_RATE
@@ -50,6 +50,31 @@ Abstract:
 static
 KSDATAFORMAT_WAVEFORMATEXTENSIBLE SpeakerAudioEngineSupportedDeviceFormats[] =
 {
+    {
+        {
+            sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE),
+            0,
+            0,
+            0,
+            STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
+            STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
+        },
+        {
+            {
+                WAVE_FORMAT_EXTENSIBLE,
+                8,
+                48000,
+                1536000,
+                32,
+                32,
+                sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)
+            },
+            32,
+            KSAUDIO_SPEAKER_7POINT1_SURROUND,
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM)
+        }
+    },
     {
         {
             sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE),
@@ -93,6 +118,31 @@ KSDATAFORMAT_WAVEFORMATEXTENSIBLE SpeakerHostPinSupportedDeviceFormats[] =
         {
             {
                 WAVE_FORMAT_EXTENSIBLE,
+                8,
+                48000,
+                1536000,
+                32,
+                32,
+                sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)
+            },
+            32,
+            KSAUDIO_SPEAKER_7POINT1_SURROUND,
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM)
+        }
+    },
+    {
+        {
+            sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE),
+            0,
+            0,
+            0,
+            STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
+            STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
+        },
+        {
+            {
+                WAVE_FORMAT_EXTENSIBLE,
                 6,
                 48000,
                 1152000,
@@ -110,6 +160,31 @@ KSDATAFORMAT_WAVEFORMATEXTENSIBLE SpeakerHostPinSupportedDeviceFormats[] =
 static
 KSDATAFORMAT_WAVEFORMATEXTENSIBLE SpeakerOffloadPinSupportedDeviceFormats[] =
 {
+    {
+        {
+            sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE),
+            0,
+            0,
+            0,
+            STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
+            STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
+        },
+        {
+            {
+                WAVE_FORMAT_EXTENSIBLE,
+                8,
+                48000,
+                1536000,
+                32,
+                32,
+                sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)
+            },
+            32,
+            KSAUDIO_SPEAKER_7POINT1_SURROUND,
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM)
+        }
+    },
     {
         {
             sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE),

@@ -1,6 +1,6 @@
 ﻿# SoundStage Router Virtual Audio
 
-This directory vendors a trimmed SysVAD-derived kernel driver slice that exposes one render endpoint named **SoundStage Router 5.1** for shared-mode WASAPI playback plus loopback capture.
+This directory vendors a trimmed SysVAD-derived kernel driver slice that exposes one render endpoint named **SoundStage Router Surround** for shared-mode WASAPI playback plus loopback capture.
 
 ## Scope and upstream provenance
 
@@ -22,18 +22,22 @@ Removed or made unreachable:
 - HDMI, SPDIF, headphone, mic, mic array, Bluetooth HFP, USB sideband, A2DP sideband, keyword detector endpoint registration, APO packaging, and keyword-detector packaging.
 - Capture endpoint registration and all non-speaker miniport arrays in `minipairs.h`.
 
-Judgement call: the offload render pin was **kept**. Removing it cleanly from SysVAD's WaveRT render path required more invasive surgery than keeping the upstream render-engine topology intact. The driver still exposes only one shared-mode format on host/offload/loopback pins, so this does not change the user-facing prototype goal.
+Judgement call: the offload render pin was **kept**. Removing it cleanly from SysVAD's WaveRT render path required more invasive surgery than keeping the upstream render-engine topology intact. The driver exposes the same two shared-mode formats on host/offload/loopback pins, so this does not change the user-facing prototype goal.
 
 ## Format contract
 
-The only shared-mode wave format exposed by the speaker endpoint is:
+The speaker endpoint exposes two shared-mode wave formats, in this order:
 
 - 48000 Hz
 - 32-bit PCM WaveRT transport (the Windows shared-mode engine exposes float32
   mix and loopback audio to the router)
-- 6 channels
 - `WAVEFORMATEXTENSIBLE`
-- `dwChannelMask = KSAUDIO_SPEAKER_5POINT1` (`FL|FR|FC|LFE|BL|BR`, mask `0x3F`)
+- Default: 8 channels with
+  `dwChannelMask = KSAUDIO_SPEAKER_7POINT1_SURROUND`
+  (`FL|FR|FC|LFE|BL|BR|SL|SR`, mask `0x63F`)
+- Also supported: 6 channels with
+  `dwChannelMask = KSAUDIO_SPEAKER_5POINT1`
+  (`FL|FR|FC|LFE|BL|BR`, mask `0x3F`)
 
 This satisfies the system-wide routing prototype requirement because Windows can open the virtual device in shared mode and WASAPI loopback capture can read the post-mix render stream without any custom IOCTL path.
 
