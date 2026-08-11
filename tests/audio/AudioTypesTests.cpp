@@ -97,3 +97,95 @@ TEST(SurroundUi_RefreshesDiscoveryOnceWhenRoutingStopsOrFaults)
     EXPECT_TRUE(!ShouldRefreshSurroundDiscovery(
         PlaybackState::Preparing, PlaybackState::Running));
 }
+
+TEST(SurroundUi_PresentsRunningSevenPointOneRouting)
+{
+    EngineStatus status;
+    status.state = PlaybackState::Running;
+    status.surroundFormat = VirtualSurroundFormat::SevenPointOne;
+    status.clockHealth = ClockHealth::Active;
+
+    const SurroundUiState ui = BuildSurroundUiState(
+        status, PlaybackMode::SystemAudio);
+
+    EXPECT_EQ(ui.formatText, std::wstring(L"7.1 detected"));
+    EXPECT_EQ(ui.routeStateText, std::wstring(L"Routing"));
+    EXPECT_EQ(ui.syncText, std::wstring(L"Aligned"));
+    EXPECT_TRUE(ui.sideLevelEnabled);
+}
+
+TEST(SurroundUi_ExplainsDisabledSideLevelForFivePointOne)
+{
+    EngineStatus status;
+    status.state = PlaybackState::Running;
+    status.surroundFormat = VirtualSurroundFormat::FivePointOne;
+
+    const SurroundUiState ui = BuildSurroundUiState(
+        status, PlaybackMode::SystemAudio);
+
+    EXPECT_TRUE(!ui.sideLevelEnabled);
+    EXPECT_EQ(ui.sideLevelHint,
+              std::wstring(L"Used when Windows is set to 7.1."));
+}
+
+TEST(SurroundUi_PresentsSettlingClockInPlainLanguage)
+{
+    EngineStatus status;
+    status.state = PlaybackState::Preparing;
+    status.surroundFormat = VirtualSurroundFormat::SevenPointOne;
+    status.clockHealth = ClockHealth::Settling;
+
+    const SurroundUiState ui = BuildSurroundUiState(
+        status, PlaybackMode::SystemAudio);
+
+    EXPECT_EQ(ui.syncText, std::wstring(L"Synchronizing outputs..."));
+}
+
+TEST(SurroundUi_PresentsStoppedRoutingAsReady)
+{
+    EngineStatus status;
+    status.state = PlaybackState::Stopped;
+    status.surroundFormat = VirtualSurroundFormat::SevenPointOne;
+
+    const SurroundUiState ui = BuildSurroundUiState(
+        status, PlaybackMode::SystemAudio);
+
+    EXPECT_EQ(ui.routeStateText, std::wstring(L"Ready"));
+    EXPECT_TRUE(ui.startEnabled);
+    EXPECT_TRUE(!ui.stopEnabled);
+    EXPECT_TRUE(ui.deviceSelectionEnabled);
+}
+
+TEST(SurroundUi_GuidesRecoveryWhenVirtualEndpointIsMissing)
+{
+    EngineStatus status;
+    status.state = PlaybackState::Stopped;
+    status.surroundFormat = VirtualSurroundFormat::Unsupported;
+    status.virtualEndpointReady = false;
+
+    const SurroundUiState ui = BuildSurroundUiState(
+        status, PlaybackMode::SystemAudio);
+
+    EXPECT_EQ(ui.formatText,
+              std::wstring(L"Surround format unavailable"));
+    EXPECT_EQ(ui.formatSeverity, UiSeverity::Warning);
+    EXPECT_TRUE(!ui.startEnabled);
+    EXPECT_TRUE(!ui.recoveryText.empty());
+}
+
+TEST(SurroundUi_PresentsFaultWithRecoveryGuidance)
+{
+    EngineStatus status;
+    status.state = PlaybackState::Faulted;
+    status.surroundFormat = VirtualSurroundFormat::SevenPointOne;
+    status.lastFault.code = 1;
+    status.lastFault.message = L"Chair output disconnected.";
+
+    const SurroundUiState ui = BuildSurroundUiState(
+        status, PlaybackMode::SystemAudio);
+
+    EXPECT_EQ(ui.routeSeverity, UiSeverity::Fault);
+    EXPECT_TRUE(!ui.recoveryText.empty());
+    EXPECT_TRUE(!ui.stopEnabled);
+    EXPECT_TRUE(ui.deviceSelectionEnabled);
+}

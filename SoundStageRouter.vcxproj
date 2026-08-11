@@ -87,6 +87,7 @@
     <ClInclude Include="src\audio\ChannelRouter.h" />
     <ClInclude Include="src\audio\MasterFrameRingBuffer.h" />
     <ClInclude Include="src\audio\LoopbackCapture.h" />
+    <ClInclude Include="src\audio\SurroundUiState.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\AppWindow.cpp" />
@@ -106,6 +107,7 @@
     <ClCompile Include="src\audio\ChannelRouter.cpp" />
     <ClCompile Include="src\audio\MasterFrameRingBuffer.cpp" />
     <ClCompile Include="src\audio\LoopbackCapture.cpp" />
+    <ClCompile Include="src\audio\SurroundUiState.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
