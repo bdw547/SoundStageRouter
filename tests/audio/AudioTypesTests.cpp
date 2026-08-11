@@ -169,6 +169,8 @@ TEST(SurroundUi_GuidesRecoveryWhenVirtualEndpointIsMissing)
     EXPECT_EQ(ui.formatText,
               std::wstring(L"Surround format unavailable"));
     EXPECT_EQ(ui.formatSeverity, UiSeverity::Warning);
+    EXPECT_EQ(ui.routeStateText, std::wstring(L"Setup required"));
+    EXPECT_EQ(ui.routeSeverity, UiSeverity::Warning);
     EXPECT_TRUE(!ui.startEnabled);
     EXPECT_TRUE(!ui.recoveryText.empty());
 }

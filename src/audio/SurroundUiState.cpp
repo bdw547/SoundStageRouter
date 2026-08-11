@@ -39,13 +39,16 @@ namespace soundstage::audio
         }
 
         void PresentRouteState(SurroundUiState& ui,
-                               const PlaybackState state)
+                               const PlaybackState state,
+                               const bool routable)
         {
             switch (state)
             {
             case PlaybackState::Stopped:
-                ui.routeStateText = L"Ready";
-                ui.routeSeverity = UiSeverity::Healthy;
+                ui.routeStateText = routable ? L"Ready" : L"Setup required";
+                ui.routeSeverity = routable
+                    ? UiSeverity::Healthy
+                    : UiSeverity::Warning;
                 break;
             case PlaybackState::Preparing:
             case PlaybackState::Primed:
@@ -88,8 +91,11 @@ namespace soundstage::audio
         const PlaybackMode mode)
     {
         SurroundUiState ui;
+        const bool routable =
+            mode == PlaybackMode::TestSignals ||
+            IsSupportedFormat(status.surroundFormat);
         PresentFormat(ui, status.surroundFormat);
-        PresentRouteState(ui, status.state);
+        PresentRouteState(ui, status.state, routable);
         PresentClockHealth(ui, status.clockHealth);
 
         ui.sideLevelEnabled =
@@ -100,9 +106,6 @@ namespace soundstage::audio
         const bool inactive =
             status.state == PlaybackState::Stopped ||
             status.state == PlaybackState::Faulted;
-        const bool routable =
-            mode == PlaybackMode::TestSignals ||
-            IsSupportedFormat(status.surroundFormat);
         ui.startEnabled = inactive && routable;
         ui.stopEnabled =
             status.state == PlaybackState::Preparing ||
