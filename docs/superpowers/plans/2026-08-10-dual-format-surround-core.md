@@ -21,6 +21,22 @@
 - Do not allocate, lock, log, access files, or call UI/COM APIs in per-frame routing code.
 - Build x64 only with PlatformToolset `v145` and Windows SDK `10.0.28000.0`.
 
+## Execution Evidence
+
+The checked steps below are backed by the committed implementation history and
+the validation reported when each task completed:
+
+| Task | Commit or range | Reported validation |
+|---:|---|---|
+| 0 | `6e6d109` | Debug and Release application suites: 95/95 passed |
+| 1 | `98ca919` | Debug application suite: 99/99 passed |
+| 2 | `dc8cfef` | Debug application suite: 101/101 passed |
+| 3 | `7264638` | Debug application suite: 107/107 passed |
+| 4 | `be38c65` | Debug application suite: 108/108 passed |
+| 5 | `ff238b0` | Debug driver build succeeded; generated INF valid |
+| 6 | `613ab97` | Debug application suite: 108/108 passed; safe UI inspection performed without installing a driver |
+| 7 | `6b711dd` plus this documentation follow-up | Debug and Release application suites: 108/108 passed; Release driver build/signing succeeded; generated INF valid |
+
 ---
 
 ### Task 0: Checkpoint the preserved system-routing work

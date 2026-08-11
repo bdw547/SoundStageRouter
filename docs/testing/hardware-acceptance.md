@@ -59,7 +59,8 @@ change whenever possible.
 4. With isolated native channels, confirm Back Left and Side Left reach only
    the left chair speaker, while Back Right and Side Right reach only the right
    chair speaker. The chair formulas must be `BackGain × BL + SideGain × SL`
-   and `BackGain × BR + SideGain × SR`.
+   and `BackGain × BR + SideGain × SR`. Here `BackGain = Back Level / 100` and
+   `SideGain = Side Level / 100`.
 5. Exercise Back Level and Side Level independently at 0%, 50%, and 100%.
    Confirm each control remains linked stereo, is live without a routing
    restart, and has no fixed attenuation: an isolated contribution at 100%
