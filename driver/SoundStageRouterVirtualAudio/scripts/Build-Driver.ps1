@@ -46,7 +46,7 @@ foreach ($file in $filesToSign) {
     }
 
     Write-Host "Signing $file"
-    & $signtool sign /as /fd SHA256 /sha1 $cert.Thumbprint /s My $file | Out-Host
+    & $signtool sign /fd SHA256 /sha1 $cert.Thumbprint /s My $file | Out-Host
     if (-not $?) { throw "signtool failed for $file" }
 }
 
