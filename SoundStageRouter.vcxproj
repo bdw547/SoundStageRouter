@@ -48,7 +48,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>ole32.lib;uuid.lib;propsys.lib;comctl32.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>ole32.lib;uuid.lib;propsys.lib;comctl32.lib;shell32.lib;uxtheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -66,7 +66,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>ole32.lib;uuid.lib;propsys.lib;comctl32.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>ole32.lib;uuid.lib;propsys.lib;comctl32.lib;shell32.lib;uxtheme.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -88,6 +88,7 @@
     <ClInclude Include="src\audio\MasterFrameRingBuffer.h" />
     <ClInclude Include="src\audio\LoopbackCapture.h" />
     <ClInclude Include="src\audio\SurroundUiState.h" />
+    <ClInclude Include="src\ui\CommandDeckTheme.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\AppWindow.cpp" />
@@ -108,6 +109,7 @@
     <ClCompile Include="src\audio\MasterFrameRingBuffer.cpp" />
     <ClCompile Include="src\audio\LoopbackCapture.cpp" />
     <ClCompile Include="src\audio\SurroundUiState.cpp" />
+    <ClCompile Include="src\ui\CommandDeckTheme.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

@@ -58,6 +58,7 @@
     <ClCompile Include="tests\audio\ChannelRouterTests.cpp" />
     <ClCompile Include="tests\audio\MasterFrameRingBufferTests.cpp" />
     <ClCompile Include="tests\audio\LoopbackCaptureTests.cpp" />
+    <ClCompile Include="tests\ui\CommandDeckThemeTests.cpp" />
     <ClCompile Include="src\audio\TestPatternGenerator.cpp" />
     <ClCompile Include="src\audio\WasapiBackend.cpp" />
     <ClCompile Include="src\audio\WasapiEndpointSession.cpp" />
@@ -75,6 +76,7 @@
     <ClCompile Include="src\audio\MasterFrameRingBuffer.cpp" />
     <ClCompile Include="src\audio\LoopbackCapture.cpp" />
     <ClCompile Include="src\audio\SurroundUiState.cpp" />
+    <ClCompile Include="src\ui\CommandDeckTheme.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

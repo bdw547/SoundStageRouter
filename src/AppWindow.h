@@ -3,6 +3,8 @@
 #include "AudioEndpoints.h"
 #include "RouterSettings.h"
 #include "audio/AudioEngineCoordinator.h"
+#include "audio/SurroundUiState.h"
+#include "ui/CommandDeckTheme.h"
 
 #include <windows.h>
 
@@ -28,20 +30,26 @@ namespace soundstage
 
         void CreateControls();
         void LayoutControls(int width, int height) const;
+        void ApplyThemeFonts() const;
+        void PaintWindow(HDC dc) const;
+        void SetTechnicalDetailsExpanded(bool expanded);
+        void UpdateTechnicalDetailsVisibility() const;
         [[nodiscard]] bool RefreshDevices();
         void PopulateControls();
-        void UpdateModeControls() const;
-        void UpdateSurroundControlAvailability(
-            audio::VirtualSurroundFormat format) const;
+        void UpdateModeControls();
         void UpdateSurroundLevelLabels() const;
         void SaveSurroundLevels();
         void SaveSettings();
         void StartTest();
         [[nodiscard]] std::optional<audio::RunConfiguration>
             BuildRunConfiguration() const;
-        void RenderEngineStatus(const audio::EngineStatus& status) const;
-        void SetPlaybackControlsEnabled(bool selectable) const;
-        void SetStatus(const std::wstring& text) const;
+        void RenderEngineStatus(const audio::EngineStatus& status);
+        void SetPlaybackControlsEnabled(bool selectable);
+        void SetStatus(
+            const std::wstring& text,
+            audio::UiSeverity severity = audio::UiSeverity::Neutral);
+        [[nodiscard]] COLORREF SeverityColor(
+            audio::UiSeverity severity) const noexcept;
         int FindEndpoint(const std::wstring& id) const;
         int SelectedEndpointIndex(HWND combo) const;
         int ReadDelay(HWND edit) const;
@@ -53,6 +61,8 @@ namespace soundstage
         HWND window_ = nullptr;
         HWND title_ = nullptr;
         HWND subtitle_ = nullptr;
+        HWND routeStatus_ = nullptr;
+        HWND syncSummary_ = nullptr;
         HWND deviceList_ = nullptr;
         HWND frontLabel_ = nullptr;
         HWND frontCombo_ = nullptr;
@@ -72,6 +82,8 @@ namespace soundstage
         HWND sideLevelLabel_ = nullptr;
         HWND sideLevel_ = nullptr;
         HWND sideLevelValue_ = nullptr;
+        HWND sideLevelHint_ = nullptr;
+        HWND mixTitle_ = nullptr;
         HWND patternLabel_ = nullptr;
         HWND patternCombo_ = nullptr;
         HWND modeLabel_ = nullptr;
@@ -82,19 +94,29 @@ namespace soundstage
         HWND formatStatus_ = nullptr;
         HWND refreshButton_ = nullptr;
         HWND saveButton_ = nullptr;
+        HWND technicalDetailsButton_ = nullptr;
         HWND startButton_ = nullptr;
         HWND stopButton_ = nullptr;
         HWND frontStatus_ = nullptr;
         HWND rearStatus_ = nullptr;
         HWND syncStatus_ = nullptr;
         HWND status_ = nullptr;
-        HFONT titleFont_ = nullptr;
-        HFONT bodyFont_ = nullptr;
-        HFONT smallFont_ = nullptr;
-        HBRUSH backgroundBrush_ = nullptr;
+
+        std::unique_ptr<ui::CommandDeckTheme> theme_;
+        audio::UiSeverity formatSeverity_ = audio::UiSeverity::Warning;
+        audio::UiSeverity routeSeverity_ = audio::UiSeverity::Warning;
+        audio::UiSeverity syncSeverity_ = audio::UiSeverity::Neutral;
+        audio::UiSeverity statusSeverity_ = audio::UiSeverity::Neutral;
+        bool technicalDetailsExpanded_ = false;
+        bool frontCardFault_ = false;
+        bool chairCardFault_ = false;
+        bool modelRecoveryVisible_ = false;
 
         std::vector<AudioEndpoint> endpoints_;
+        bool hasSingleVirtualEndpoint_ = false;
         audio::VirtualSurroundFormat detectedVirtualFormat_ =
+            audio::VirtualSurroundFormat::Unsupported;
+        audio::VirtualSurroundFormat routedVirtualFormat_ =
             audio::VirtualSurroundFormat::Unsupported;
         audio::PlaybackState observedPlaybackState_ =
             audio::PlaybackState::Stopped;
