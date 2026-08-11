@@ -1,4 +1,5 @@
 #include "AudioEndpoints.h"
+#include "audio/VirtualSurroundContract.h"
 
 #include <audioclient.h>
 #include <propkeydef.h>
@@ -111,6 +112,16 @@ namespace
         endpoint.channelMask = GetChannelMask(format);
         endpoint.isFloatingPoint = IsFloatingPoint(format);
         endpoint.formatDescription = DescribeFormat(format);
+        endpoint.virtualContractValid =
+            endpoint.isVirtualEndpoint &&
+            soundstage::audio::DetectVirtualSurroundFormat({
+                format->nSamplesPerSec,
+                format->nChannels,
+                format->wBitsPerSample,
+                format->nBlockAlign,
+                endpoint.channelMask,
+                endpoint.isFloatingPoint}) !=
+                soundstage::audio::VirtualSurroundFormat::Unsupported;
         CoTaskMemFree(format);
     }
 }
@@ -157,18 +168,11 @@ namespace soundstage
             const std::wstring interfaceName = GetPropertyString(
                 device.Get(), PKEY_DeviceInterface_FriendlyName, L"");
             endpoint.isVirtualEndpoint =
-                interfaceName == L"SoundStage Router 5.1" ||
+                interfaceName == L"SoundStage Router Surround" ||
                 interfaceName ==
                     L"SoundStage Router Virtual Audio (WDM)";
             endpoint.isDefault = endpoint.id == defaultDeviceId;
             PopulateFormat(device.Get(), endpoint);
-            endpoint.virtualContractValid =
-                endpoint.isVirtualEndpoint &&
-                endpoint.channels == 6 &&
-                endpoint.sampleRate == 48000 &&
-                endpoint.bitsPerSample == 32 &&
-                endpoint.channelMask == 0x3F &&
-                endpoint.isFloatingPoint;
             endpoints.push_back(std::move(endpoint));
         }
 

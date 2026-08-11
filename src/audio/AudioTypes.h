@@ -17,6 +17,7 @@ namespace soundstage::audio
     enum class TestPattern { PairedClicks, AlternatingClicks, FrontTone, RearTone };
     enum class PlaybackState { Stopped, Preparing, Primed, Running, Stopping, Faulted };
     enum class ClockHealth { Settling, Active, Unavailable };
+    enum class VirtualSurroundFormat : std::uint8_t;
 
     struct StereoFrame { float left = 0.0f; float right = 0.0f; };
     struct RoleFrame { StereoFrame front{}; StereoFrame rear{}; };
@@ -96,6 +97,7 @@ namespace soundstage::audio
         double correctionPpm = 0.0;
         std::array<EndpointTelemetry, 2> endpoints{};
         bool virtualEndpointReady = false;
+        VirtualSurroundFormat surroundFormat{};
         std::uint64_t captureOverflowCount = 0;
         std::uint64_t captureUnderrunCount = 0;
         EngineFault lastFault{};

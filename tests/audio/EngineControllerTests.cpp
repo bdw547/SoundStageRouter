@@ -225,6 +225,21 @@ TEST(Engine_SystemModeStartsCaptureAfterOutputsArePrimed)
     EXPECT_EQ(captures.state.stopCalls, 1u);
 }
 
+TEST(Engine_SystemModePublishesDetectedSurroundFormatAfterTick)
+{
+    FakeEndpointSessionFactory outputs;
+    FakeCaptureFactory captures;
+    captures.state.telemetry.surroundFormat =
+        VirtualSurroundFormat::SevenPointOne;
+    EngineController engine(outputs, &captures);
+    EXPECT_TRUE(engine.Start(ValidSystemConfiguration(), {}).ok);
+
+    engine.Tick(10'000'000);
+
+    EXPECT_EQ(engine.Status().surroundFormat,
+              VirtualSurroundFormat::SevenPointOne);
+}
+
 TEST(Engine_SystemModePublishesSurroundMixBeforeCapturePreparation)
 {
     FakeEndpointSessionFactory outputs;

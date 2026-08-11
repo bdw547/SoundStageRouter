@@ -277,6 +277,7 @@ namespace soundstage::audio
         {
             const CaptureTelemetry capture = capture_->Snapshot();
             status_.virtualEndpointReady = capture.prepared;
+            status_.surroundFormat = capture.surroundFormat;
             status_.captureOverflowCount =
                 masterFrames_->OverflowCount();
             status_.captureUnderrunCount =

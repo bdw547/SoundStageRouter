@@ -71,11 +71,11 @@ namespace soundstage::audio
             switch (code)
             {
             case VirtualEndpointMissingCode:
-                return L"SoundStage Router 5.1 is not installed";
+                return L"SoundStage Router Surround is not installed";
             case VirtualEndpointDuplicateCode:
-                return L"Multiple SoundStage Router 5.1 endpoints found";
+                return L"Multiple SoundStage Router Surround endpoints found";
             case VirtualEndpointFormatCode:
-                return L"SoundStage Router 5.1 has the wrong format";
+                return L"Set SoundStage Router Surround to 5.1 or 7.1 at 48 kHz";
             default:
                 return L"Virtual endpoint capture failed";
             }

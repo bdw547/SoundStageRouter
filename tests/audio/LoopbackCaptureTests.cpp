@@ -175,6 +175,9 @@ TEST(LoopbackCapture_RejectsWrongInjectedFormat)
         capture.Prepare(ring, RearFillMode::Off, {});
     EXPECT_TRUE(!result.ok);
     EXPECT_EQ(result.fault.code, VirtualEndpointFormatCode);
+    EXPECT_EQ(result.fault.message,
+              std::wstring(
+                  L"Set SoundStage Router Surround to 5.1 or 7.1 at 48 kHz"));
 }
 
 TEST(LoopbackCapture_AppliesWindowsMasterGain)
@@ -202,16 +205,27 @@ TEST(LoopbackCapture_AppliesWindowsMasterGain)
 
 TEST(LoopbackCapture_PropagatesMissingAndDuplicateDiscovery)
 {
-    for (const std::uint32_t code : {
-             VirtualEndpointMissingCode, VirtualEndpointDuplicateCode})
+    struct DiscoveryFault
+    {
+        std::uint32_t code;
+        const wchar_t* message;
+    };
+    for (const DiscoveryFault expected : {
+             DiscoveryFault{
+                 VirtualEndpointMissingCode,
+                 L"SoundStage Router Surround is not installed"},
+             DiscoveryFault{
+                 VirtualEndpointDuplicateCode,
+                 L"Multiple SoundStage Router Surround endpoints found"}})
     {
         auto backend = std::make_unique<FakeCaptureBackend>();
-        backend->discoverResult = {false, code};
+        backend->discoverResult = {false, expected.code};
         WasapiLoopbackCapture capture(std::move(backend));
         MasterFrameRingBuffer ring(8);
         const SessionResult result =
             capture.Prepare(ring, RearFillMode::Off, {});
         EXPECT_TRUE(!result.ok);
-        EXPECT_EQ(result.fault.code, code);
+        EXPECT_EQ(result.fault.code, expected.code);
+        EXPECT_EQ(result.fault.message, std::wstring(expected.message));
     }
 }
