@@ -120,6 +120,7 @@ protected:
     PWAVEFORMATEXTENSIBLE       m_pWfExt;
     ULONG                       m_ulContentId;
     ULONGLONG                   m_ullLoopbackReadPosition;
+    EX_RUNDOWN_REF              m_StreamRundown;
     CSaveData                   m_SaveData;
     ToneGenerator               m_ToneGenerator;
     GUID                        m_SignalProcessingMode;

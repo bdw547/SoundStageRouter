@@ -35,6 +35,46 @@ namespace soundstage::driver
         AttributeList
     };
 
+    enum class StreamReservationResult : UInt8
+    {
+        Reserved,
+        FormatSwitchInProgress,
+        NoCapacity
+    };
+
+    struct StreamCapacityState
+    {
+        UInt32 allocated;
+        UInt32 maximum;
+    };
+
+    [[nodiscard]] constexpr StreamReservationResult TryReserveStreamSlot(
+        StreamCapacityState& state,
+        const bool formatSwitchInProgress) noexcept
+    {
+        if (formatSwitchInProgress)
+        {
+            return StreamReservationResult::FormatSwitchInProgress;
+        }
+        if (state.allocated >= state.maximum)
+        {
+            return StreamReservationResult::NoCapacity;
+        }
+
+        ++state.allocated;
+        return StreamReservationResult::Reserved;
+    }
+
+    constexpr void FinishStreamReservation(
+        StreamCapacityState& state,
+        const bool streamCreated) noexcept
+    {
+        if (!streamCreated && state.allocated > 0)
+        {
+            --state.allocated;
+        }
+    }
+
     using Size = decltype(sizeof(0));
 
     template <Size Count>

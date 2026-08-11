@@ -235,6 +235,12 @@ public:
         _In_ ULONG                  _Pin,
         _In_ PCMiniportWaveRTStream _Stream
     );
+
+    NTSTATUS StreamClosing
+    (
+        _In_ ULONG _Pin,
+        _In_ PCMiniportWaveRTStream _Stream
+    );
     
     NTSTATUS StreamClosed
     (
@@ -560,8 +566,33 @@ public:
     );
 
 private:
-    BOOLEAN BeginStreamCreation();
-    VOID EndStreamCreation();
+    NTSTATUS BeginStreamCreation(
+        _In_ ULONG Pin,
+        _In_ BOOLEAN Capture);
+    VOID EndStreamCreation(
+        _In_ ULONG Pin,
+        _In_ BOOLEAN Capture,
+        _In_ BOOLEAN StreamCreated);
+
+    VOID SnapshotAudioEngineFormat(
+        _In_ BOOLEAN MixFormat,
+        _Out_ KSDATAFORMAT_WAVEFORMATEXTENSIBLE* Format);
+
+    NTSTATUS TryBeginSharedFormatSwitch(
+        _In_ soundstage::driver::SurroundLayout Requested,
+        _Out_ soundstage::driver::SharedFormatState* Transition);
+
+    VOID CommitSharedFormatSwitch(
+        _In_ const KSDATAFORMAT_WAVEFORMATEXTENSIBLE* Format,
+        _In_ const soundstage::driver::SharedFormatState* Transition);
+
+    ULONG SnapshotDrmContentIds(
+        _Out_writes_(Capacity) ULONG* ContentIds,
+        _In_ ULONG Capacity);
+
+    ULONG ReferenceLoopbackStreams(
+        _Out_writes_(Capacity) PCMiniportWaveRTStream* Streams,
+        _In_ ULONG Capacity);
 
     soundstage::driver::SurroundLayout SnapshotSelectedSurroundLayout();
 

@@ -154,3 +154,21 @@ TEST(DriverContract_RejectsSwitchWhileStreamsExistWithoutMutation)
     EXPECT_EQ(state.blockAlign, 32u);
     EXPECT_EQ(state.loopbackWritePosition, 4'096u);
 }
+
+TEST(DriverContract_ReservesStreamCapacityAtomically)
+{
+    StreamCapacityState capacity{0, 1};
+
+    EXPECT_EQ(TryReserveStreamSlot(capacity, false),
+              StreamReservationResult::Reserved);
+    EXPECT_EQ(capacity.allocated, 1u);
+    EXPECT_EQ(TryReserveStreamSlot(capacity, false),
+              StreamReservationResult::NoCapacity);
+    EXPECT_EQ(capacity.allocated, 1u);
+
+    FinishStreamReservation(capacity, false);
+    EXPECT_EQ(capacity.allocated, 0u);
+    EXPECT_EQ(TryReserveStreamSlot(capacity, true),
+              StreamReservationResult::FormatSwitchInProgress);
+    EXPECT_EQ(capacity.allocated, 0u);
+}

@@ -245,6 +245,7 @@ Remarks
 STDMETHODIMP_(NTSTATUS) CMiniportWaveRT::GetMixFormat(_In_  ULONG    _ulNodeId, _Out_ KSDATAFORMAT_WAVEFORMATEX *_pFormat, _In_ ULONG _ulBufferSize)
 {
     NTSTATUS ntStatus = STATUS_INVALID_DEVICE_REQUEST;
+    KSDATAFORMAT_WAVEFORMATEXTENSIBLE snapshot = {};
 
     PAGED_CODE ();
 
@@ -259,11 +260,8 @@ STDMETHODIMP_(NTSTATUS) CMiniportWaveRT::GetMixFormat(_In_  ULONG    _ulNodeId, 
         // this implementation here will always be called by our own code with _pFormat to be KSDATAFORMAT_WAVEFORMATEXTENSIBLE,
         // so there should be no buffer overrun; also the IF_TRUE_ACTION_JUMP above also help to avoid buffer overrun. 
 #pragma warning(disable:6386)
-    KIRQL oldIrql;
-    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
-    RtlCopyMemory((PVOID)_pFormat, (PVOID)m_pMixFormat,
-                  sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE));
-    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+    SnapshotAudioEngineFormat(TRUE, &snapshot);
+    RtlCopyMemory((PVOID)_pFormat, &snapshot, sizeof(snapshot));
 #pragma warning (pop)
     ntStatus = STATUS_SUCCESS;
 
@@ -298,6 +296,7 @@ The driver might need to add appropriate src/format converter according or chang
 STDMETHODIMP_(NTSTATUS) CMiniportWaveRT::GetDeviceFormat(_In_ ULONG _ulNodeId, _Out_ KSDATAFORMAT_WAVEFORMATEX *_pFormat, _In_ ULONG _ulBufferSize)
 {
     NTSTATUS ntStatus = STATUS_INVALID_DEVICE_REQUEST;
+    KSDATAFORMAT_WAVEFORMATEXTENSIBLE snapshot = {};
     PAGED_CODE ();
 
     ASSERT (_pFormat);
@@ -310,11 +309,8 @@ STDMETHODIMP_(NTSTATUS) CMiniportWaveRT::GetDeviceFormat(_In_ ULONG _ulNodeId, _
         // this implementation here will always be called by our own code with _pFormat to be KSDATAFORMAT_WAVEFORMATEXTENSIBLE,
         // so there should be no buffer overrun; also the IF_TRUE_ACTION_JUMP above also help to avoid buffer overrun. 
 #pragma warning(disable:6386)
-    KIRQL oldIrql;
-    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
-    RtlCopyMemory((PVOID)_pFormat, (PVOID)m_pDeviceFormat,
-                  sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE));
-    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+    SnapshotAudioEngineFormat(FALSE, &snapshot);
+    RtlCopyMemory((PVOID)_pFormat, &snapshot, sizeof(snapshot));
 #pragma warning (pop)
     ntStatus = STATUS_SUCCESS;
 
@@ -350,6 +346,7 @@ STDMETHODIMP_(NTSTATUS) CMiniportWaveRT::SetDeviceFormat(_In_  ULONG _ulNodeId, 
 {
     NTSTATUS ntStatus = STATUS_INVALID_DEVICE_REQUEST;
     KSDATAFORMAT_WAVEFORMATEXTENSIBLE requestedFormat = {};
+    soundstage::driver::SharedFormatState transition = {};
     soundstage::driver::SurroundLayout requestedLayout =
         soundstage::driver::SurroundLayout::Unsupported;
     PAGED_CODE ();
@@ -367,22 +364,11 @@ STDMETHODIMP_(NTSTATUS) CMiniportWaveRT::SetDeviceFormat(_In_  ULONG _ulNodeId, 
         ntStatus = STATUS_NO_MATCH,
         Exit);
 
+    ntStatus = TryBeginSharedFormatSwitch(
+        requestedLayout, &transition);
+    if (!NT_SUCCESS(ntStatus))
     {
-        KIRQL oldIrql;
-        KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
-        const BOOLEAN busy =
-            m_FormatSwitchInProgress ||
-            m_ulStreamCreationsInProgress > 0 ||
-            m_ulSystemAllocated > 0 ||
-            m_ulOffloadAllocated > 0 ||
-            m_ulLoopbackAllocated > 0;
-        if (!busy)
-        {
-            m_FormatSwitchInProgress = TRUE;
-        }
-        KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
-
-        IF_TRUE_ACTION_JUMP(busy, ntStatus = STATUS_DEVICE_BUSY, Exit);
+        goto Exit;
     }
 
     // No stream or queued stream DPC can access the byte ring while the gate
@@ -392,22 +378,9 @@ STDMETHODIMP_(NTSTATUS) CMiniportWaveRT::SetDeviceFormat(_In_  ULONG _ulNodeId, 
     {
         RtlZeroMemory(m_LoopbackMixBuffer, m_LoopbackMixBufferSize);
     }
-    m_LoopbackMixWritePosition = 0;
+    m_LoopbackMixWritePosition = transition.loopbackWritePosition;
 
-    {
-        KIRQL oldIrql;
-        KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
-        RtlCopyMemory(m_pDeviceFormat, &requestedFormat,
-                      sizeof(requestedFormat));
-        RtlCopyMemory(m_pMixFormat, &requestedFormat,
-                      sizeof(requestedFormat));
-        m_pMixFormat->DataFormat.Flags = 0;
-        m_pMixFormat->DataFormat.Reserved = 0;
-        m_pMixFormat->DataFormat.SampleSize = 0;
-        m_SelectedSurroundLayout = requestedLayout;
-        m_FormatSwitchInProgress = FALSE;
-        KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
-    }
+    CommitSharedFormatSwitch(&requestedFormat, &transition);
 
     ntStatus = STATUS_SUCCESS;
 
@@ -1187,22 +1160,25 @@ Return Value:
     PAGED_CODE ();
     DPF_ENTER(("[CMiniportWaveRT::SetLoopbackProtection]"));
     
-    NTSTATUS    ntStatus    = STATUS_SUCCESS;
+    NTSTATUS ntStatus = STATUS_SUCCESS;
+    PCMiniportWaveRTStream referencedStreams[
+        MAX_OUTPUT_LOOPBACK_STREAMS] = {};
+    ULONG referencedCount = 0;
 
     if (ulProtectionOption == m_LoopbackProtection)
     {
         goto Done;
     }
 
-    for (ULONG i = 0; i < MAX_OUTPUT_LOOPBACK_STREAMS; i++)
+    referencedCount = ReferenceLoopbackStreams(
+        referencedStreams, ARRAYSIZE(referencedStreams));
+    for (ULONG i = 0; i < referencedCount; i++)
     {
-        if (m_LoopbackStreams[i])
+        ntStatus = referencedStreams[i]->SetLoopbackProtection(
+            ulProtectionOption);
+        if (!NT_SUCCESS(ntStatus))
         {
-            ntStatus = m_LoopbackStreams[i]->SetLoopbackProtection(ulProtectionOption);
-            if (!NT_SUCCESS(ntStatus))
-            {
-                break;
-            }
+            break;
         }
     }
 
@@ -1215,13 +1191,17 @@ Return Value:
         //
         // Something went wrong, restore old protection setting.
         //
-        for (ULONG i = 0; i < MAX_OUTPUT_LOOPBACK_STREAMS; i++)
+        for (ULONG i = 0; i < referencedCount; i++)
         {
-            if (m_LoopbackStreams[i])
-            {
-                (void)m_LoopbackStreams[i]->SetLoopbackProtection(m_LoopbackProtection);
-            }
+            (void)referencedStreams[i]->SetLoopbackProtection(
+                m_LoopbackProtection);
         }
+    }
+
+    for (ULONG i = 0; i < referencedCount; ++i)
+    {
+        ExReleaseRundownProtection(
+            &referencedStreams[i]->m_StreamRundown);
     }
 
 Done:

@@ -36,6 +36,14 @@ Return Value:
 {
     PAGED_CODE();
 
+    if (m_pMiniport != NULL && m_bUnregisterStream)
+    {
+        // Remove the weak pointer before allowing any teardown. Readers that
+        // acquired rundown protection before removal finish first.
+        m_pMiniport->StreamClosing(m_ulPin, this);
+        ExWaitForRundownProtectionRelease(&m_StreamRundown);
+    }
+
     // The miniport's allocated-stream count is the shared-format switch
     // safety gate. Keep this stream registered until its timer callback and
     // all queued DPC work can no longer touch the miniport or loopback ring.
@@ -242,6 +250,7 @@ Return Value:
     m_ullPresentationPosition = 0;
     m_ulContentId = 0;
     m_ullLoopbackReadPosition = 0;
+    ExInitializeRundownProtection(&m_StreamRundown);
     m_ulCurrentWritePosition = 0;
     m_ulLastOsReadPacket = ULONG_MAX;
     m_ulLastOsWritePacket = ULONG_MAX;

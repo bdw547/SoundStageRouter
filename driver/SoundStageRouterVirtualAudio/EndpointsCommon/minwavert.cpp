@@ -690,9 +690,10 @@ Return Value:
     
     *OutStream = NULL;
 
-    if (!BeginStreamCreation())
+    ntStatus = BeginStreamCreation(Pin, Capture);
+    if (!NT_SUCCESS(ntStatus))
     {
-        return STATUS_DEVICE_BUSY;
+        return ntStatus;
     }
 
      //
@@ -703,13 +704,6 @@ Return Value:
         // The attributes are aligned (QWORD alignment) after the data format
         PKSMULTIPLE_ITEM attributes = (PKSMULTIPLE_ITEM) (((PBYTE)DataFormat) + ((DataFormat->FormatSize + FILE_QUAD_ALIGNMENT) & ~FILE_QUAD_ALIGNMENT));
         ntStatus = GetAttributesFromAttributeList(attributes, attributes->Size, &signalProcessingMode);
-    }
-
-    // Check if we have enough streams.
-    //
-    if (NT_SUCCESS(ntStatus))
-    {
-        ntStatus = ValidateStreamCreate(Pin, Capture);
     }
 
     // Determine if the format is valid.
@@ -774,7 +768,7 @@ Return Value:
         stream->Release();
     }
 
-    EndStreamCreation();
+    EndStreamCreation(Pin, Capture, NT_SUCCESS(ntStatus));
     
     return ntStatus;
 } // NewStream
@@ -950,7 +944,7 @@ Done:
 }
 
 //=============================================================================
-#pragma code_seg("PAGE")
+#pragma code_seg()
 NTSTATUS
 CMiniportWaveRT::ValidateStreamCreate
 (
@@ -958,8 +952,6 @@ CMiniportWaveRT::ValidateStreamCreate
     _In_    BOOLEAN _Capture
 )
 {
-    PAGED_CODE();
-
     DPF_ENTER(("[CMiniportWaveRT::ValidateStreamCreate]"));
 
     NTSTATUS ntStatus = STATUS_NOT_SUPPORTED;
@@ -969,38 +961,61 @@ CMiniportWaveRT::ValidateStreamCreate
     const bool keyword = IsKeywordDetectorPin(_Pin);
     const bool systemRender = IsSystemRenderPin(_Pin);
     const bool offload = IsOffloadPin(_Pin);
-    KIRQL oldIrql;
-    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+    ULONG* allocated = NULL;
+    ULONG maximum = 0;
 
     if (_Capture)
     {
         if (loopback)
         {
-            VERIFY_PIN_INSTANCE_RESOURCES_AVAILABLE(ntStatus, m_ulLoopbackAllocated, m_ulMaxLoopbackStreams);
+            allocated = &m_ulLoopbackAllocated;
+            maximum = m_ulMaxLoopbackStreams;
         }
         else if (systemCapture)
         {
-            VERIFY_PIN_INSTANCE_RESOURCES_AVAILABLE(ntStatus, m_ulSystemAllocated, m_ulMaxSystemStreams);
+            allocated = &m_ulSystemAllocated;
+            maximum = m_ulMaxSystemStreams;
         }
         else if (keyword)
         {
-            VERIFY_PIN_INSTANCE_RESOURCES_AVAILABLE(ntStatus, m_ulKeywordDetectorAllocated, m_ulMaxKeywordDetectorStreams);
+            allocated = &m_ulKeywordDetectorAllocated;
+            maximum = m_ulMaxKeywordDetectorStreams;
         }
     }
     else
     {
         if (systemRender)
         {
-            VERIFY_PIN_INSTANCE_RESOURCES_AVAILABLE(ntStatus, m_ulSystemAllocated, m_ulMaxSystemStreams);
+            allocated = &m_ulSystemAllocated;
+            maximum = m_ulMaxSystemStreams;
         }
         else if (offload)
         {
-            VERIFY_PIN_INSTANCE_RESOURCES_AVAILABLE(ntStatus, m_ulOffloadAllocated, m_ulMaxOffloadStreams);
+            allocated = &m_ulOffloadAllocated;
+            maximum = m_ulMaxOffloadStreams;
         }
     }
 
+    if (allocated == NULL)
+    {
+        return ntStatus;
+    }
+
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+    soundstage::driver::StreamCapacityState capacity{
+        *allocated, maximum};
+    const auto reservation = soundstage::driver::TryReserveStreamSlot(
+        capacity, !!m_FormatSwitchInProgress);
     KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
-    return ntStatus;
+
+    return reservation ==
+               soundstage::driver::StreamReservationResult::Reserved
+        ? STATUS_SUCCESS
+        : reservation == soundstage::driver::
+              StreamReservationResult::FormatSwitchInProgress
+            ? STATUS_DEVICE_BUSY
+            : STATUS_INSUFFICIENT_RESOURCES;
 }
 
 //=============================================================================
@@ -1019,29 +1034,249 @@ VOID CMiniportWaveRT::ReleaseFormatsAndModesLock()
 }
 
 #pragma code_seg()
-BOOLEAN CMiniportWaveRT::BeginStreamCreation()
+NTSTATUS CMiniportWaveRT::BeginStreamCreation(
+    _In_ ULONG Pin,
+    _In_ BOOLEAN Capture)
 {
-    KIRQL oldIrql;
-    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
-
-    const BOOLEAN allowed = !m_FormatSwitchInProgress;
-    if (allowed)
+    ULONG* allocated = NULL;
+    ULONG maximum = 0;
+    if (Capture)
     {
-        ++m_ulStreamCreationsInProgress;
+        if (IsLoopbackPin(Pin))
+        {
+            allocated = &m_ulLoopbackAllocated;
+            maximum = m_ulMaxLoopbackStreams;
+        }
+        else if (IsSystemCapturePin(Pin) || IsCellularBiDiCapturePin(Pin))
+        {
+            allocated = &m_ulSystemAllocated;
+            maximum = m_ulMaxSystemStreams;
+        }
+        else if (IsKeywordDetectorPin(Pin))
+        {
+            allocated = &m_ulKeywordDetectorAllocated;
+            maximum = m_ulMaxKeywordDetectorStreams;
+        }
+    }
+    else if (IsSystemRenderPin(Pin))
+    {
+        allocated = &m_ulSystemAllocated;
+        maximum = m_ulMaxSystemStreams;
+    }
+    else if (IsOffloadPin(Pin))
+    {
+        allocated = &m_ulOffloadAllocated;
+        maximum = m_ulMaxOffloadStreams;
     }
 
+    if (allocated == NULL)
+    {
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+    soundstage::driver::StreamCapacityState capacity{
+        *allocated, maximum};
+    const auto reservation = soundstage::driver::TryReserveStreamSlot(
+        capacity, !!m_FormatSwitchInProgress);
+    if (reservation ==
+        soundstage::driver::StreamReservationResult::Reserved)
+    {
+        *allocated = capacity.allocated;
+        ++m_ulStreamCreationsInProgress;
+    }
     KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
-    return allowed;
+
+    return reservation ==
+               soundstage::driver::StreamReservationResult::Reserved
+        ? STATUS_SUCCESS
+        : reservation == soundstage::driver::
+              StreamReservationResult::FormatSwitchInProgress
+            ? STATUS_DEVICE_BUSY
+            : STATUS_INSUFFICIENT_RESOURCES;
 }
 
 #pragma code_seg()
-VOID CMiniportWaveRT::EndStreamCreation()
+VOID CMiniportWaveRT::EndStreamCreation(
+    _In_ ULONG Pin,
+    _In_ BOOLEAN Capture,
+    _In_ BOOLEAN StreamCreated)
+{
+    ULONG* allocated = NULL;
+    ULONG maximum = 0;
+    if (Capture)
+    {
+        if (IsLoopbackPin(Pin))
+        {
+            allocated = &m_ulLoopbackAllocated;
+            maximum = m_ulMaxLoopbackStreams;
+        }
+        else if (IsSystemCapturePin(Pin) || IsCellularBiDiCapturePin(Pin))
+        {
+            allocated = &m_ulSystemAllocated;
+            maximum = m_ulMaxSystemStreams;
+        }
+        else if (IsKeywordDetectorPin(Pin))
+        {
+            allocated = &m_ulKeywordDetectorAllocated;
+            maximum = m_ulMaxKeywordDetectorStreams;
+        }
+    }
+    else if (IsSystemRenderPin(Pin))
+    {
+        allocated = &m_ulSystemAllocated;
+        maximum = m_ulMaxSystemStreams;
+    }
+    else if (IsOffloadPin(Pin))
+    {
+        allocated = &m_ulOffloadAllocated;
+        maximum = m_ulMaxOffloadStreams;
+    }
+
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+    ASSERT(allocated != NULL);
+    ASSERT(m_ulStreamCreationsInProgress > 0);
+    if (allocated != NULL)
+    {
+        soundstage::driver::StreamCapacityState capacity{
+            *allocated, maximum};
+        soundstage::driver::FinishStreamReservation(
+            capacity, !!StreamCreated);
+        *allocated = capacity.allocated;
+    }
+    --m_ulStreamCreationsInProgress;
+    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+}
+
+#pragma code_seg()
+VOID CMiniportWaveRT::SnapshotAudioEngineFormat(
+    _In_ BOOLEAN MixFormat,
+    _Out_ KSDATAFORMAT_WAVEFORMATEXTENSIBLE* Format)
 {
     KIRQL oldIrql;
     KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
-    ASSERT(m_ulStreamCreationsInProgress > 0);
-    --m_ulStreamCreationsInProgress;
+    RtlCopyMemory(
+        Format,
+        MixFormat ? m_pMixFormat : m_pDeviceFormat,
+        sizeof(*Format));
     KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+}
+
+#pragma code_seg()
+NTSTATUS CMiniportWaveRT::TryBeginSharedFormatSwitch(
+    _In_ soundstage::driver::SurroundLayout Requested,
+    _Out_ soundstage::driver::SharedFormatState* Transition)
+{
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+
+    const auto current = m_SelectedSurroundLayout;
+    soundstage::driver::SharedFormatState state{
+        current, current, current, current, current,
+        current == soundstage::driver::SurroundLayout::FivePointOne
+            ? soundstage::driver::FivePointOneBlockAlign
+            : soundstage::driver::SevenPointOneBlockAlign,
+        1};
+    const bool noStreamsOrCreations =
+        !m_FormatSwitchInProgress &&
+        m_ulStreamCreationsInProgress == 0 &&
+        m_ulSystemAllocated == 0 &&
+        m_ulOffloadAllocated == 0 &&
+        m_ulLoopbackAllocated == 0;
+    const bool accepted = soundstage::driver::TrySwitchSharedFormat(
+        state, Requested, noStreamsOrCreations);
+    if (accepted)
+    {
+        m_FormatSwitchInProgress = TRUE;
+        *Transition = state;
+    }
+
+    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+    return accepted ? STATUS_SUCCESS : STATUS_DEVICE_BUSY;
+}
+
+#pragma code_seg()
+VOID CMiniportWaveRT::CommitSharedFormatSwitch(
+    _In_ const KSDATAFORMAT_WAVEFORMATEXTENSIBLE* Format,
+    _In_ const soundstage::driver::SharedFormatState* Transition)
+{
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+    RtlCopyMemory(m_pDeviceFormat, Format, sizeof(*Format));
+    RtlCopyMemory(m_pMixFormat, Format, sizeof(*Format));
+    m_pMixFormat->DataFormat.Flags = 0;
+    m_pMixFormat->DataFormat.Reserved = 0;
+    m_pMixFormat->DataFormat.SampleSize = 0;
+    m_SelectedSurroundLayout = Transition->device;
+    m_FormatSwitchInProgress = FALSE;
+    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+}
+
+#pragma code_seg()
+ULONG CMiniportWaveRT::SnapshotDrmContentIds(
+    _Out_writes_(Capacity) ULONG* ContentIds,
+    _In_ ULONG Capacity)
+{
+    if (ContentIds == NULL || Capacity == 0)
+    {
+        return 0;
+    }
+
+    ULONG contentCount = 0;
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+    for (ULONG index = 0;
+         index < m_ulMaxSystemStreams && contentCount < Capacity;
+         ++index)
+    {
+        if (m_SystemStreams[index] != NULL)
+        {
+            ContentIds[contentCount++] =
+                m_SystemStreams[index]->m_ulContentId;
+        }
+    }
+    for (ULONG index = 0;
+         index < m_ulMaxOffloadStreams && contentCount < Capacity;
+         ++index)
+    {
+        if (m_OffloadStreams[index] != NULL)
+        {
+            ContentIds[contentCount++] =
+                m_OffloadStreams[index]->m_ulContentId;
+        }
+    }
+    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+    return contentCount;
+}
+
+#pragma code_seg()
+ULONG CMiniportWaveRT::ReferenceLoopbackStreams(
+    _Out_writes_(Capacity) PCMiniportWaveRTStream* Streams,
+    _In_ ULONG Capacity)
+{
+    if (Streams == NULL || Capacity == 0)
+    {
+        return 0;
+    }
+
+    ULONG streamCount = 0;
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+    for (ULONG index = 0;
+         index < m_ulMaxLoopbackStreams && streamCount < Capacity;
+         ++index)
+    {
+        PCMiniportWaveRTStream stream = m_LoopbackStreams[index];
+        if (stream != NULL &&
+            ExAcquireRundownProtection(&stream->m_StreamRundown))
+        {
+            Streams[streamCount++] = stream;
+        }
+    }
+    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+    return streamCount;
 }
 
 #pragma code_seg()
@@ -1478,7 +1713,7 @@ CMiniportWaveRT::GetLoopbackMixWritePosition()
 }
 
 //=============================================================================
-#pragma code_seg("PAGE")
+#pragma code_seg()
 NTSTATUS
 CMiniportWaveRT::StreamCreated
 (
@@ -1486,8 +1721,6 @@ CMiniportWaveRT::StreamCreated
     _In_ PCMiniportWaveRTStream _Stream
 )
 {
-    PAGED_CODE();
-
     PCMiniportWaveRTStream * streams        = NULL;
     ULONG                    count          = 0;
     const bool systemCapture =
@@ -1507,31 +1740,25 @@ CMiniportWaveRT::StreamCreated
     KIRQL oldIrql;
     KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
 
-    if (systemCapture)
+    if (loopback)
     {
-        ALLOCATE_PIN_INSTANCE_RESOURCES(m_ulSystemAllocated);
-    }
-    else if (keyword)
-    {
-        ALLOCATE_PIN_INSTANCE_RESOURCES(m_ulKeywordDetectorAllocated);
-    }
-    else if (loopback)
-    {
-        ALLOCATE_PIN_INSTANCE_RESOURCES(m_ulLoopbackAllocated);
         streams = m_LoopbackStreams;
         count = m_ulMaxLoopbackStreams;
     }
     else if (systemRender)
     {
-        ALLOCATE_PIN_INSTANCE_RESOURCES(m_ulSystemAllocated);
         streams = m_SystemStreams;
         count = m_ulMaxSystemStreams;
     }
     else if (offload)
     {
-        ALLOCATE_PIN_INSTANCE_RESOURCES(m_ulOffloadAllocated);
         streams = m_OffloadStreams;
         count = m_ulMaxOffloadStreams;
+    }
+    else if (!systemCapture && !keyword)
+    {
+        KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+        return STATUS_NOT_SUPPORTED;
     }
     
     //
@@ -1548,7 +1775,11 @@ CMiniportWaveRT::StreamCreated
                 break;
             }
         }
-        ASSERT(i != count);
+        if (i == count)
+        {
+            KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+            return STATUS_INSUFFICIENT_RESOURCES;
+        }
     }
 
     KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
@@ -1557,58 +1788,39 @@ CMiniportWaveRT::StreamCreated
 }
 
 //=============================================================================
-#pragma code_seg("PAGE")
+#pragma code_seg()
 NTSTATUS
-CMiniportWaveRT::StreamClosed
+CMiniportWaveRT::StreamClosing
 (
     _In_ ULONG                  _Pin,
     _In_ PCMiniportWaveRTStream _Stream
 )
 {
-    PAGED_CODE();
-
-    bool                      updateDrmRights = false;
     PCMiniportWaveRTStream  * streams         = NULL;
     ULONG                     count           = 0;
-    const bool systemCapture =
-        IsSystemCapturePin(_Pin) || IsCellularBiDiCapturePin(_Pin);
-    const bool keyword = IsKeywordDetectorPin(_Pin);
     const bool loopback = IsLoopbackPin(_Pin);
     const bool systemRender = IsSystemRenderPin(_Pin);
     const bool offload = IsOffloadPin(_Pin);
 
-    DPF_ENTER(("[CMiniportWaveRT::StreamClosed]"));
+    DPF_ENTER(("[CMiniportWaveRT::StreamClosing]"));
 
     KIRQL oldIrql;
     KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
 
-    if (systemCapture)
+    if (loopback)
     {
-        FREE_PIN_INSTANCE_RESOURCES(m_ulSystemAllocated);
-    }
-    else if (keyword)
-    {
-        FREE_PIN_INSTANCE_RESOURCES(m_ulKeywordDetectorAllocated);
-    }
-    else if (loopback)
-    {
-        FREE_PIN_INSTANCE_RESOURCES(m_ulLoopbackAllocated);
         streams = m_LoopbackStreams;
         count = m_ulMaxLoopbackStreams;
     }
     else if (systemRender)
     {
-        FREE_PIN_INSTANCE_RESOURCES(m_ulSystemAllocated);
         streams = m_SystemStreams;
         count = m_ulMaxSystemStreams;
-        updateDrmRights = true;
     }
     else if (offload)
     {
-        FREE_PIN_INSTANCE_RESOURCES(m_ulOffloadAllocated);
         streams = m_OffloadStreams;
         count = m_ulMaxOffloadStreams;
-        updateDrmRights = true;
     }
 
     //
@@ -1629,11 +1841,70 @@ CMiniportWaveRT::StreamClosed
     }
 
     KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
-    
-    //
-    // Update mixed drm rights.
-    //
-    if (updateDrmRights)
+    return STATUS_SUCCESS;
+}
+
+//=============================================================================
+#pragma code_seg()
+NTSTATUS
+CMiniportWaveRT::StreamClosed
+(
+    _In_ ULONG                  _Pin,
+    _In_ PCMiniportWaveRTStream _Stream
+)
+{
+    UNREFERENCED_PARAMETER(_Stream);
+
+    ULONG* allocated = NULL;
+    ULONG maximum = 0;
+    const bool systemCapture =
+        IsSystemCapturePin(_Pin) || IsCellularBiDiCapturePin(_Pin);
+    const bool keyword = IsKeywordDetectorPin(_Pin);
+    const bool loopback = IsLoopbackPin(_Pin);
+    const bool systemRender = IsSystemRenderPin(_Pin);
+    const bool offload = IsOffloadPin(_Pin);
+
+    if (systemCapture)
+    {
+        allocated = &m_ulSystemAllocated;
+        maximum = m_ulMaxSystemStreams;
+    }
+    else if (keyword)
+    {
+        allocated = &m_ulKeywordDetectorAllocated;
+        maximum = m_ulMaxKeywordDetectorStreams;
+    }
+    else if (loopback)
+    {
+        allocated = &m_ulLoopbackAllocated;
+        maximum = m_ulMaxLoopbackStreams;
+    }
+    else if (systemRender)
+    {
+        allocated = &m_ulSystemAllocated;
+        maximum = m_ulMaxSystemStreams;
+    }
+    else if (offload)
+    {
+        allocated = &m_ulOffloadAllocated;
+        maximum = m_ulMaxOffloadStreams;
+    }
+
+    if (allocated == NULL)
+    {
+        return STATUS_NOT_SUPPORTED;
+    }
+
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+    ASSERT(*allocated > 0);
+    soundstage::driver::StreamCapacityState capacity{
+        *allocated, maximum};
+    soundstage::driver::FinishStreamReservation(capacity, false);
+    *allocated = capacity.allocated;
+    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+
+    if (systemRender || offload)
     {
         UpdateDrmRights();
     }
@@ -2662,28 +2933,11 @@ Return Value:
         return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    //
-    // Create an array of all StreamIds.
-    //
-    for (ULONG i = 0; i < m_ulMaxSystemStreams; i++)
-    {
-        if (m_SystemStreams[i])
-        {
-            ulContentIds[ulContentIndex] = m_SystemStreams[i]->m_ulContentId;
-            ulContentIndex++;
-        }
-    }
-
-    for (ULONG i = 0; i < m_ulMaxOffloadStreams; i++)
-    {
-        ASSERT(IsOffloadSupported());
-        
-        if (m_OffloadStreams[i])
-        {
-            ulContentIds[ulContentIndex] = m_OffloadStreams[i]->m_ulContentId;
-            ulContentIndex++;
-        }
-    }
+    // Snapshot scalar content IDs while the weak stream arrays are locked.
+    // No stream pointer is used after the resident helper releases the lock.
+    ulContentIndex = SnapshotDrmContentIds(
+        ulContentIds,
+        m_ulMaxSystemStreams + m_ulMaxOffloadStreams);
 
     //
     // Create the new contentId.
