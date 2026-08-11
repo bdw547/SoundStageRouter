@@ -259,7 +259,11 @@ STDMETHODIMP_(NTSTATUS) CMiniportWaveRT::GetMixFormat(_In_  ULONG    _ulNodeId, 
         // this implementation here will always be called by our own code with _pFormat to be KSDATAFORMAT_WAVEFORMATEXTENSIBLE,
         // so there should be no buffer overrun; also the IF_TRUE_ACTION_JUMP above also help to avoid buffer overrun. 
 #pragma warning(disable:6386)
-    RtlCopyMemory((PVOID)_pFormat, (PVOID)m_pMixFormat, sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE));
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+    RtlCopyMemory((PVOID)_pFormat, (PVOID)m_pMixFormat,
+                  sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE));
+    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
 #pragma warning (pop)
     ntStatus = STATUS_SUCCESS;
 
@@ -306,7 +310,11 @@ STDMETHODIMP_(NTSTATUS) CMiniportWaveRT::GetDeviceFormat(_In_ ULONG _ulNodeId, _
         // this implementation here will always be called by our own code with _pFormat to be KSDATAFORMAT_WAVEFORMATEXTENSIBLE,
         // so there should be no buffer overrun; also the IF_TRUE_ACTION_JUMP above also help to avoid buffer overrun. 
 #pragma warning(disable:6386)
-    RtlCopyMemory((PVOID)_pFormat, (PVOID)m_pDeviceFormat, sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE));
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+    RtlCopyMemory((PVOID)_pFormat, (PVOID)m_pDeviceFormat,
+                  sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE));
+    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
 #pragma warning (pop)
     ntStatus = STATUS_SUCCESS;
 
@@ -341,6 +349,9 @@ The driver might need to add appropriate src/format converter according or chang
 STDMETHODIMP_(NTSTATUS) CMiniportWaveRT::SetDeviceFormat(_In_  ULONG _ulNodeId, _In_ KSDATAFORMAT_WAVEFORMATEX *_pFormat, _In_ ULONG _ulBufferSize)
 {
     NTSTATUS ntStatus = STATUS_INVALID_DEVICE_REQUEST;
+    KSDATAFORMAT_WAVEFORMATEXTENSIBLE requestedFormat = {};
+    soundstage::driver::SurroundLayout requestedLayout =
+        soundstage::driver::SurroundLayout::Unsupported;
     PAGED_CODE ();
 
     ASSERT (_pFormat);
@@ -349,7 +360,55 @@ STDMETHODIMP_(NTSTATUS) CMiniportWaveRT::SetDeviceFormat(_In_  ULONG _ulNodeId, 
     IF_TRUE_ACTION_JUMP(_ulNodeId != KSNODE_WAVE_AUDIO_ENGINE, ntStatus = STATUS_INVALID_DEVICE_REQUEST, Exit);
     IF_TRUE_ACTION_JUMP(_ulBufferSize < sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE), ntStatus = STATUS_BUFFER_TOO_SMALL, Exit);
 
-    RtlCopyMemory((PVOID)m_pDeviceFormat, (PVOID)_pFormat, sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE));
+    RtlCopyMemory(&requestedFormat, _pFormat, sizeof(requestedFormat));
+    requestedLayout = IdentifySurroundFormat(&requestedFormat.DataFormat);
+    IF_TRUE_ACTION_JUMP(
+        requestedLayout == soundstage::driver::SurroundLayout::Unsupported,
+        ntStatus = STATUS_NO_MATCH,
+        Exit);
+
+    {
+        KIRQL oldIrql;
+        KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+        const BOOLEAN busy =
+            m_FormatSwitchInProgress ||
+            m_ulStreamCreationsInProgress > 0 ||
+            m_ulSystemAllocated > 0 ||
+            m_ulOffloadAllocated > 0 ||
+            m_ulLoopbackAllocated > 0;
+        if (!busy)
+        {
+            m_FormatSwitchInProgress = TRUE;
+        }
+        KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+
+        IF_TRUE_ACTION_JUMP(busy, ntStatus = STATUS_DEVICE_BUSY, Exit);
+    }
+
+    // No stream or queued stream DPC can access the byte ring while the gate
+    // is set, so reset the large buffer at PASSIVE_LEVEL without holding a
+    // spin lock. New stream creation remains blocked until all state converges.
+    if (m_LoopbackMixBuffer != NULL && m_LoopbackMixBufferSize > 0)
+    {
+        RtlZeroMemory(m_LoopbackMixBuffer, m_LoopbackMixBufferSize);
+    }
+    m_LoopbackMixWritePosition = 0;
+
+    {
+        KIRQL oldIrql;
+        KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+        RtlCopyMemory(m_pDeviceFormat, &requestedFormat,
+                      sizeof(requestedFormat));
+        RtlCopyMemory(m_pMixFormat, &requestedFormat,
+                      sizeof(requestedFormat));
+        m_pMixFormat->DataFormat.Flags = 0;
+        m_pMixFormat->DataFormat.Reserved = 0;
+        m_pMixFormat->DataFormat.SampleSize = 0;
+        m_SelectedSurroundLayout = requestedLayout;
+        m_FormatSwitchInProgress = FALSE;
+        KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+    }
+
     ntStatus = STATUS_SUCCESS;
 
 Exit:    

@@ -40,6 +40,7 @@
   <ItemGroup>
     <ClCompile Include="tests\TestMain.cpp" />
     <ClCompile Include="tests\RouterSettingsTests.cpp" />
+    <ClCompile Include="tests\driver\SurroundDriverContractTests.cpp" />
     <ClCompile Include="tests\analysis\WavReaderTests.cpp" />
     <ClCompile Include="tests\analysis\AlignmentAnalyzerTests.cpp" />
     <ClCompile Include="tests\audio\AudioTypesTests.cpp" />

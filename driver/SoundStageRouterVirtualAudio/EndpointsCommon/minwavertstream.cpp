@@ -35,6 +35,23 @@ Return Value:
 --*/
 {
     PAGED_CODE();
+
+    // The miniport's allocated-stream count is the shared-format switch
+    // safety gate. Keep this stream registered until its timer callback and
+    // all queued DPC work can no longer touch the miniport or loopback ring.
+    if (m_pNotificationTimer)
+    {
+        ExDeleteTimer
+        (
+            m_pNotificationTimer,
+            TRUE, // Cancel the timer if it is currently set.
+            TRUE, // Wait for a callback that is already running.
+            NULL
+        );
+        m_pNotificationTimer = NULL;
+    }
+    KeFlushQueuedDpcs();
+
     if (NULL != m_pMiniport)
     {
         if (m_pAudioModules)
@@ -89,22 +106,6 @@ Return Value:
         ExFreePoolWithTag( m_pWfExt, MINWAVERTSTREAM_POOLTAG );
         m_pWfExt = NULL;
     }
-    if (m_pNotificationTimer)
-    {
-        ExDeleteTimer
-        (
-            m_pNotificationTimer, 
-            TRUE, // Cancel the timer if it is currently set.
-            TRUE, // Wait for the timer to finish expiring and for any callback to a ExTimerCallback routine to finish.
-            NULL
-         );
-    }
-
-    // Since we just cancelled the notification timer, wait for all queued 
-    // DPCs to complete before we free the notification DPC.
-    //
-    KeFlushQueuedDpcs();
-
 #ifdef SYSVAD_BTH_BYPASS
     ASSERT(m_SidebandOpen == FALSE);
     ASSERT(m_SidebandStarted == FALSE);

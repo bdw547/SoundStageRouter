@@ -22,6 +22,7 @@ Abstract:
 #define _SYSVAD_SPEAKERWAVTABLE_H_
 
 #include "simple.h"
+#include "SoundStageSurroundContract.h"
 
 #define SPEAKER_DEVICE_MAX_CHANNELS                 8
 
@@ -299,7 +300,39 @@ KSDATARANGE_AUDIO SpeakerPinDataRangesStream[] =
             STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
             STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
         },
+        6,
+        SPEAKER_HOST_MIN_BITS_PER_SAMPLE,
+        SPEAKER_HOST_MAX_BITS_PER_SAMPLE,
+        SPEAKER_HOST_MIN_SAMPLE_RATE,
+        SPEAKER_HOST_MAX_SAMPLE_RATE
+    },
+    {
+        {
+            sizeof(KSDATARANGE_AUDIO),
+            KSDATARANGE_ATTRIBUTES,
+            0,
+            0,
+            STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
+            STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
+        },
         SPEAKER_OFFLOAD_MAX_CHANNELS,
+        SPEAKER_OFFLOAD_MIN_BITS_PER_SAMPLE,
+        SPEAKER_OFFLOAD_MAX_BITS_PER_SAMPLE,
+        SPEAKER_OFFLOAD_MIN_SAMPLE_RATE,
+        SPEAKER_OFFLOAD_MAX_SAMPLE_RATE
+    },
+    {
+        {
+            sizeof(KSDATARANGE_AUDIO),
+            KSDATARANGE_ATTRIBUTES,
+            0,
+            0,
+            STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
+            STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
+        },
+        6,
         SPEAKER_OFFLOAD_MIN_BITS_PER_SAMPLE,
         SPEAKER_OFFLOAD_MAX_BITS_PER_SAMPLE,
         SPEAKER_OFFLOAD_MIN_SAMPLE_RATE,
@@ -320,6 +353,22 @@ KSDATARANGE_AUDIO SpeakerPinDataRangesStream[] =
         SPEAKER_LOOPBACK_MAX_BITS_PER_SAMPLE,
         SPEAKER_LOOPBACK_MIN_SAMPLE_RATE,
         SPEAKER_LOOPBACK_MAX_SAMPLE_RATE
+    },
+    {
+        {
+            sizeof(KSDATARANGE_AUDIO),
+            0,
+            0,
+            0,
+            STATICGUIDOF(KSDATAFORMAT_TYPE_AUDIO),
+            STATICGUIDOF(KSDATAFORMAT_SUBTYPE_PCM),
+            STATICGUIDOF(KSDATAFORMAT_SPECIFIER_WAVEFORMATEX)
+        },
+        6,
+        SPEAKER_LOOPBACK_MIN_BITS_PER_SAMPLE,
+        SPEAKER_LOOPBACK_MAX_BITS_PER_SAMPLE,
+        SPEAKER_LOOPBACK_MIN_SAMPLE_RATE,
+        SPEAKER_LOOPBACK_MAX_SAMPLE_RATE
     }
 };
 
@@ -328,19 +377,35 @@ PKSDATARANGE SpeakerPinDataRangePointersStream[] =
 {
     PKSDATARANGE(&SpeakerPinDataRangesStream[0]),
     PKSDATARANGE(&PinDataRangeAttributeList),
+    PKSDATARANGE(&SpeakerPinDataRangesStream[1]),
+    PKSDATARANGE(&PinDataRangeAttributeList),
 };
+
+static constexpr soundstage::driver::DataRangePointerKind
+SpeakerProcessingDataRangeKinds[] =
+{
+    soundstage::driver::DataRangePointerKind::AudioWithAttributes,
+    soundstage::driver::DataRangePointerKind::AttributeList,
+    soundstage::driver::DataRangePointerKind::AudioWithAttributes,
+    soundstage::driver::DataRangePointerKind::AttributeList
+};
+static_assert(soundstage::driver::AttributesFollowEveryFlaggedRange(
+    SpeakerProcessingDataRangeKinds));
 
 static
 PKSDATARANGE SpeakerPinDataRangePointersOffloadStream[] =
 {
-    PKSDATARANGE(&SpeakerPinDataRangesStream[1]),
+    PKSDATARANGE(&SpeakerPinDataRangesStream[2]),
+    PKSDATARANGE(&PinDataRangeAttributeList),
+    PKSDATARANGE(&SpeakerPinDataRangesStream[3]),
     PKSDATARANGE(&PinDataRangeAttributeList),
 };
 
 static
 PKSDATARANGE SpeakerPinDataRangePointersLoopbackStream[] =
 {
-    PKSDATARANGE(&SpeakerPinDataRangesStream[2])
+    PKSDATARANGE(&SpeakerPinDataRangesStream[4]),
+    PKSDATARANGE(&SpeakerPinDataRangesStream[5])
 };
 
 static

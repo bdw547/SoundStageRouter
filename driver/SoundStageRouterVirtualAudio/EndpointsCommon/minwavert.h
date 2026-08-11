@@ -22,6 +22,8 @@ Abstract:
 #include "usbhsmicwavtable.h"
 #endif // SYSVAD_USB_SIDEBAND
 
+#include "SoundStageSurroundContract.h"
+
 //=============================================================================
 // Referenced Forward
 //=============================================================================
@@ -139,6 +141,7 @@ private:
     ULONG                               m_ulSystemAllocated;
     ULONG                               m_ulOffloadAllocated;
     ULONG                               m_ulKeywordDetectorAllocated;
+    ULONG                               m_ulStreamCreationsInProgress;
 
     ULONG                               m_ulMaxSystemStreams;
     ULONG                               m_ulMaxOffloadStreams;
@@ -153,6 +156,9 @@ private:
     ULONG                               m_LoopbackMixBufferSize;
     ULONGLONG                           m_LoopbackMixWritePosition;
     KSPIN_LOCK                          m_LoopbackMixLock;
+    KSPIN_LOCK                          m_SharedFormatStateLock;
+    BOOLEAN                             m_FormatSwitchInProgress;
+    soundstage::driver::SurroundLayout  m_SelectedSurroundLayout;
 
     BOOL                                m_bGfxEnabled;
     PBOOL                               m_pbMuted;
@@ -380,6 +386,7 @@ public:
 
         KeInitializeSpinLock(&m_DeviceFormatsAndModesLock);
         KeInitializeSpinLock(&m_LoopbackMixLock);
+        KeInitializeSpinLock(&m_SharedFormatStateLock);
         m_DeviceFormatsAndModesIrql = PASSIVE_LEVEL;
     }
 
@@ -553,6 +560,18 @@ public:
     );
 
 private:
+    BOOLEAN BeginStreamCreation();
+    VOID EndStreamCreation();
+
+    soundstage::driver::SurroundLayout SnapshotSelectedSurroundLayout();
+
+    NTSTATUS CopySelectedSurroundFormat(
+        _In_ ULONG PinId,
+        _Out_ KSDATAFORMAT_WAVEFORMATEXTENSIBLE* Format);
+
+    static soundstage::driver::SurroundLayout IdentifySurroundFormat(
+        _In_ PKSDATAFORMAT DataFormat);
+
     _IRQL_raises_(DISPATCH_LEVEL)
     _Acquires_lock_(m_DeviceFormatsAndModesLock)
     _Requires_lock_not_held_(m_DeviceFormatsAndModesLock)

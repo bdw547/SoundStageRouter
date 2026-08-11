@@ -300,7 +300,9 @@ Arguments:
 
     // Verify channel count is supported. This routine assumes a separate data
     // range for each supported channel count.
-    if (((PKSDATARANGE_AUDIO)MyDataRange)->MaximumChannels != ((PKSDATARANGE_AUDIO)ClientDataRange)->MaximumChannels)
+    if (!soundstage::driver::DataRangeChannelsIntersect(
+            ((PKSDATARANGE_AUDIO)ClientDataRange)->MaximumChannels,
+            ((PKSDATARANGE_AUDIO)MyDataRange)->MaximumChannels))
     {
         return STATUS_NO_MATCH;
     }
@@ -398,6 +400,10 @@ Return Value:
     m_ulSystemAllocated                 = 0;
     m_ulOffloadAllocated                = 0;
     m_ulKeywordDetectorAllocated        = 0;
+    m_ulStreamCreationsInProgress       = 0;
+    m_FormatSwitchInProgress            = FALSE;
+    m_SelectedSurroundLayout            =
+        soundstage::driver::SurroundLayout::SevenPointOne;
     m_SystemStreams                     = NULL;
     m_OffloadStreams                    = NULL;
     m_LoopbackStreams                   = NULL;
@@ -684,6 +690,11 @@ Return Value:
     
     *OutStream = NULL;
 
+    if (!BeginStreamCreation())
+    {
+        return STATUS_DEVICE_BUSY;
+    }
+
      //
     // If the data format attributes were specified, extract them.
     //
@@ -706,6 +717,15 @@ Return Value:
     if (NT_SUCCESS(ntStatus))
     {
         ntStatus = IsFormatSupported(Pin, Capture, DataFormat);
+    }
+
+    // The loopback ring is a raw byte ring. Host, offload, and loopback
+    // streams must therefore use the one currently selected frame layout.
+    if (NT_SUCCESS(ntStatus) &&
+        (IsSystemRenderPin(Pin) || IsOffloadPin(Pin) || IsLoopbackPin(Pin)) &&
+        IdentifySurroundFormat(DataFormat) != SnapshotSelectedSurroundLayout())
+    {
+        ntStatus = STATUS_NO_MATCH;
     }
 
     // Instantiate a stream. Stream must be in
@@ -753,6 +773,8 @@ Return Value:
     {
         stream->Release();
     }
+
+    EndStreamCreation();
     
     return ntStatus;
 } // NewStream
@@ -941,34 +963,43 @@ CMiniportWaveRT::ValidateStreamCreate
     DPF_ENTER(("[CMiniportWaveRT::ValidateStreamCreate]"));
 
     NTSTATUS ntStatus = STATUS_NOT_SUPPORTED;
+    const bool loopback = IsLoopbackPin(_Pin);
+    const bool systemCapture =
+        IsSystemCapturePin(_Pin) || IsCellularBiDiCapturePin(_Pin);
+    const bool keyword = IsKeywordDetectorPin(_Pin);
+    const bool systemRender = IsSystemRenderPin(_Pin);
+    const bool offload = IsOffloadPin(_Pin);
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
 
     if (_Capture)
     {
-        if (IsLoopbackPin(_Pin))
+        if (loopback)
         {
             VERIFY_PIN_INSTANCE_RESOURCES_AVAILABLE(ntStatus, m_ulLoopbackAllocated, m_ulMaxLoopbackStreams);
         }
-        else if (IsSystemCapturePin(_Pin) || IsCellularBiDiCapturePin(_Pin))
+        else if (systemCapture)
         {
             VERIFY_PIN_INSTANCE_RESOURCES_AVAILABLE(ntStatus, m_ulSystemAllocated, m_ulMaxSystemStreams);
         }
-        else if (IsKeywordDetectorPin(_Pin))
+        else if (keyword)
         {
             VERIFY_PIN_INSTANCE_RESOURCES_AVAILABLE(ntStatus, m_ulKeywordDetectorAllocated, m_ulMaxKeywordDetectorStreams);
         }
     }
     else
     {
-        if (IsSystemRenderPin(_Pin))
+        if (systemRender)
         {
             VERIFY_PIN_INSTANCE_RESOURCES_AVAILABLE(ntStatus, m_ulSystemAllocated, m_ulMaxSystemStreams);
         }
-        else if (IsOffloadPin(_Pin))
+        else if (offload)
         {
             VERIFY_PIN_INSTANCE_RESOURCES_AVAILABLE(ntStatus, m_ulOffloadAllocated, m_ulMaxOffloadStreams);
         }
     }
 
+    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
     return ntStatus;
 }
 
@@ -985,6 +1016,114 @@ _Use_decl_annotations_
 VOID CMiniportWaveRT::ReleaseFormatsAndModesLock()
 {
     KeReleaseSpinLock(&m_DeviceFormatsAndModesLock, m_DeviceFormatsAndModesIrql);
+}
+
+#pragma code_seg()
+BOOLEAN CMiniportWaveRT::BeginStreamCreation()
+{
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+
+    const BOOLEAN allowed = !m_FormatSwitchInProgress;
+    if (allowed)
+    {
+        ++m_ulStreamCreationsInProgress;
+    }
+
+    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+    return allowed;
+}
+
+#pragma code_seg()
+VOID CMiniportWaveRT::EndStreamCreation()
+{
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+    ASSERT(m_ulStreamCreationsInProgress > 0);
+    --m_ulStreamCreationsInProgress;
+    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+}
+
+#pragma code_seg()
+soundstage::driver::SurroundLayout
+CMiniportWaveRT::SnapshotSelectedSurroundLayout()
+{
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+    const soundstage::driver::SurroundLayout layout =
+        m_SelectedSurroundLayout;
+    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+    return layout;
+}
+
+#pragma code_seg()
+soundstage::driver::SurroundLayout
+CMiniportWaveRT::IdentifySurroundFormat(_In_ PKSDATAFORMAT DataFormat)
+{
+    using namespace soundstage::driver;
+
+    if (DataFormat == NULL ||
+        DataFormat->FormatSize !=
+            sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE))
+    {
+        return SurroundLayout::Unsupported;
+    }
+
+    const auto format =
+        reinterpret_cast<PKSDATAFORMAT_WAVEFORMATEXTENSIBLE>(DataFormat);
+    const ExactPcmFormat candidate =
+    {
+        DataFormat->FormatSize,
+        !!IsEqualGUIDAligned(
+            DataFormat->MajorFormat, KSDATAFORMAT_TYPE_AUDIO),
+        !!IsEqualGUIDAligned(
+            DataFormat->SubFormat, KSDATAFORMAT_SUBTYPE_PCM),
+        !!IsEqualGUIDAligned(
+            DataFormat->Specifier, KSDATAFORMAT_SPECIFIER_WAVEFORMATEX),
+        format->WaveFormatExt.Format.wFormatTag,
+        format->WaveFormatExt.Format.nChannels,
+        format->WaveFormatExt.Format.nSamplesPerSec,
+        format->WaveFormatExt.Format.nAvgBytesPerSec,
+        format->WaveFormatExt.Format.nBlockAlign,
+        format->WaveFormatExt.Format.wBitsPerSample,
+        format->WaveFormatExt.Format.cbSize,
+        format->WaveFormatExt.Samples.wValidBitsPerSample,
+        format->WaveFormatExt.dwChannelMask,
+        !!IsEqualGUIDAligned(
+            format->WaveFormatExt.SubFormat,
+            KSDATAFORMAT_SUBTYPE_PCM)
+    };
+
+    return IdentifyExactPcmFormat(candidate);
+}
+
+#pragma code_seg()
+NTSTATUS CMiniportWaveRT::CopySelectedSurroundFormat(
+    _In_ ULONG PinId,
+    _Out_ KSDATAFORMAT_WAVEFORMATEXTENSIBLE* Format)
+{
+    if (Format == NULL ||
+        PinId >= m_pMiniportPair->WaveDescriptor->PinCount)
+    {
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    const soundstage::driver::SurroundLayout selected =
+        SnapshotSelectedSurroundLayout();
+    PKSDATAFORMAT_WAVEFORMATEXTENSIBLE formats = NULL;
+    const ULONG formatCount =
+        GetPinSupportedDeviceFormats(PinId, &formats);
+
+    for (ULONG index = 0; index < formatCount; ++index)
+    {
+        if (IdentifySurroundFormat(&formats[index].DataFormat) == selected)
+        {
+            RtlCopyMemory(Format, &formats[index], sizeof(*Format));
+            return STATUS_SUCCESS;
+        }
+    }
+
+    return STATUS_NOT_SUPPORTED;
 }
 
 //---------------------------------------------------------------------------
@@ -1351,33 +1490,44 @@ CMiniportWaveRT::StreamCreated
 
     PCMiniportWaveRTStream * streams        = NULL;
     ULONG                    count          = 0;
+    const bool systemCapture =
+        IsSystemCapturePin(_Pin) || IsCellularBiDiCapturePin(_Pin);
+    const bool keyword = IsKeywordDetectorPin(_Pin);
+    const bool loopback = IsLoopbackPin(_Pin);
+    const bool systemRender = IsSystemRenderPin(_Pin);
+    const bool offload = IsOffloadPin(_Pin);
     
     DPF_ENTER(("[CMiniportWaveRT::StreamCreated]"));
-    
-    if (IsSystemCapturePin(_Pin) || IsCellularBiDiCapturePin(_Pin))
+
+    if (loopback)
+    {
+        _Stream->m_SaveData.Disable(m_MixDrmRights.CopyProtect);
+    }
+
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+
+    if (systemCapture)
     {
         ALLOCATE_PIN_INSTANCE_RESOURCES(m_ulSystemAllocated);
-        return STATUS_SUCCESS;
     }
-    if (IsKeywordDetectorPin(_Pin))
+    else if (keyword)
     {
         ALLOCATE_PIN_INSTANCE_RESOURCES(m_ulKeywordDetectorAllocated);
-        return STATUS_SUCCESS;
     }
-    else if (IsLoopbackPin(_Pin))
+    else if (loopback)
     {
         ALLOCATE_PIN_INSTANCE_RESOURCES(m_ulLoopbackAllocated);
         streams = m_LoopbackStreams;
         count = m_ulMaxLoopbackStreams;
-        _Stream->m_SaveData.Disable(m_MixDrmRights.CopyProtect);
     }
-    else if (IsSystemRenderPin(_Pin))
+    else if (systemRender)
     {
         ALLOCATE_PIN_INSTANCE_RESOURCES(m_ulSystemAllocated);
         streams = m_SystemStreams;
         count = m_ulMaxSystemStreams;
     }
-    else if (IsOffloadPin(_Pin))
+    else if (offload)
     {
         ALLOCATE_PIN_INSTANCE_RESOURCES(m_ulOffloadAllocated);
         streams = m_OffloadStreams;
@@ -1401,6 +1551,8 @@ CMiniportWaveRT::StreamCreated
         ASSERT(i != count);
     }
 
+    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
+
     return STATUS_SUCCESS;
 }
 
@@ -1418,33 +1570,40 @@ CMiniportWaveRT::StreamClosed
     bool                      updateDrmRights = false;
     PCMiniportWaveRTStream  * streams         = NULL;
     ULONG                     count           = 0;
+    const bool systemCapture =
+        IsSystemCapturePin(_Pin) || IsCellularBiDiCapturePin(_Pin);
+    const bool keyword = IsKeywordDetectorPin(_Pin);
+    const bool loopback = IsLoopbackPin(_Pin);
+    const bool systemRender = IsSystemRenderPin(_Pin);
+    const bool offload = IsOffloadPin(_Pin);
 
     DPF_ENTER(("[CMiniportWaveRT::StreamClosed]"));
 
-    if (IsSystemCapturePin(_Pin) || IsCellularBiDiCapturePin(_Pin))
+    KIRQL oldIrql;
+    KeAcquireSpinLock(&m_SharedFormatStateLock, &oldIrql);
+
+    if (systemCapture)
     {
         FREE_PIN_INSTANCE_RESOURCES(m_ulSystemAllocated);
-        return STATUS_SUCCESS;
     }
-    if (IsKeywordDetectorPin(_Pin))
+    else if (keyword)
     {
         FREE_PIN_INSTANCE_RESOURCES(m_ulKeywordDetectorAllocated);
-        return STATUS_SUCCESS;
     }
-    else if (IsLoopbackPin(_Pin))
+    else if (loopback)
     {
         FREE_PIN_INSTANCE_RESOURCES(m_ulLoopbackAllocated);
         streams = m_LoopbackStreams;
         count = m_ulMaxLoopbackStreams;
     }
-    else if (IsSystemRenderPin(_Pin))
+    else if (systemRender)
     {
         FREE_PIN_INSTANCE_RESOURCES(m_ulSystemAllocated);
         streams = m_SystemStreams;
         count = m_ulMaxSystemStreams;
         updateDrmRights = true;
     }
-    else if (IsOffloadPin(_Pin))
+    else if (offload)
     {
         FREE_PIN_INSTANCE_RESOURCES(m_ulOffloadAllocated);
         streams = m_OffloadStreams;
@@ -1468,6 +1627,8 @@ CMiniportWaveRT::StreamClosed
         }
         ASSERT(i != count);
     }
+
+    KeReleaseSpinLock(&m_SharedFormatStateLock, oldIrql);
     
     //
     // Update mixed drm rights.
@@ -1592,7 +1753,6 @@ CMiniportWaveRT::IsFormatSupported
 
     DPF_ENTER(("[CMiniportWaveRT::IsFormatSupported]"));
 
-    NTSTATUS                            ntStatus = STATUS_NO_MATCH;
     PKSDATAFORMAT_WAVEFORMATEXTENSIBLE  pPinFormats = NULL;
     ULONG                               cPinFormats = 0;
 
@@ -1603,48 +1763,25 @@ CMiniportWaveRT::IsFormatSupported
         return STATUS_INVALID_PARAMETER;
     }
 
+    const soundstage::driver::SurroundLayout requested =
+        IdentifySurroundFormat(_pDataFormat);
+    if (requested == soundstage::driver::SurroundLayout::Unsupported)
+    {
+        return STATUS_NO_MATCH;
+    }
+
     cPinFormats = GetPinSupportedDeviceFormats(_ulPin, &pPinFormats);
 
     for (UINT iFormat = 0; iFormat < cPinFormats; iFormat++)
     {
-        PKSDATAFORMAT_WAVEFORMATEXTENSIBLE pFormat = &pPinFormats[iFormat];
-        // KSDATAFORMAT VALIDATION
-        if (!IsEqualGUIDAligned(pFormat->DataFormat.MajorFormat, _pDataFormat->MajorFormat)) { continue; }
-        if (!IsEqualGUIDAligned(pFormat->DataFormat.SubFormat, _pDataFormat->SubFormat)) { continue; }
-        if (!IsEqualGUIDAligned(pFormat->DataFormat.Specifier, _pDataFormat->Specifier)) { continue; }
-        if (pFormat->DataFormat.FormatSize < sizeof(KSDATAFORMAT_WAVEFORMATEX)) { continue; }
-
-        // WAVEFORMATEX VALIDATION
-        PWAVEFORMATEX pWaveFormat = reinterpret_cast<PWAVEFORMATEX>(_pDataFormat + 1);
-        
-        if (pWaveFormat->wFormatTag != WAVE_FORMAT_EXTENSIBLE)
+        if (IdentifySurroundFormat(&pPinFormats[iFormat].DataFormat) ==
+            requested)
         {
-            if (pWaveFormat->wFormatTag != EXTRACT_WAVEFORMATEX_ID(&(pFormat->WaveFormatExt.SubFormat))) { continue; }
+            return STATUS_SUCCESS;
         }
-        if (pWaveFormat->nChannels  != pFormat->WaveFormatExt.Format.nChannels) { continue; }
-        if (pWaveFormat->nSamplesPerSec != pFormat->WaveFormatExt.Format.nSamplesPerSec) { continue; }
-        if (pWaveFormat->nBlockAlign != pFormat->WaveFormatExt.Format.nBlockAlign) { continue; }
-        if (pWaveFormat->wBitsPerSample != pFormat->WaveFormatExt.Format.wBitsPerSample) { continue; }
-
-        if (pWaveFormat->wFormatTag != WAVE_FORMAT_EXTENSIBLE)
-        {
-            ntStatus = STATUS_SUCCESS;
-            break;
-        }
-
-        // WAVEFORMATEXTENSIBLE VALIDATION
-        if (pWaveFormat->cbSize < sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)) { continue; }
-
-        PWAVEFORMATEXTENSIBLE pWaveFormatExt = reinterpret_cast<PWAVEFORMATEXTENSIBLE>(pWaveFormat);
-        if (pWaveFormatExt->Samples.wValidBitsPerSample != pFormat->WaveFormatExt.Samples.wValidBitsPerSample) { continue; }
-        if (pWaveFormatExt->dwChannelMask != pFormat->WaveFormatExt.dwChannelMask) { continue; }
-        if (!IsEqualGUIDAligned(pWaveFormatExt->SubFormat, pFormat->WaveFormatExt.SubFormat)) { continue; }
-
-        ntStatus = STATUS_SUCCESS;
-        break;
     }
 
-    return ntStatus;
+    return STATUS_NO_MATCH;
 }
 
 #ifdef SYSVAD_BTH_BYPASS
@@ -2241,6 +2378,8 @@ CMiniportWaveRT::PropertyHandlerProposedFormat2
     GUID                    signalProcessingMode    = {0};
     BOOLEAN                 bFound                  = FALSE;
     ULONG                   i;
+    KSDATAFORMAT_WAVEFORMATEXTENSIBLE selectedFormat = {};
+    PKSDATAFORMAT           proposedFormat          = NULL;
 
     PAGED_CODE();
 
@@ -2332,10 +2471,22 @@ CMiniportWaveRT::PropertyHandlerProposedFormat2
         return STATUS_NOT_SUPPORTED;
     }
 
+    proposedFormat = modeInfo->DefaultFormat;
+    if (IsSystemRenderPin(kspPin->PinId) || IsOffloadPin(kspPin->PinId))
+    {
+        ntStatus = CopySelectedSurroundFormat(
+            kspPin->PinId, &selectedFormat);
+        if (!NT_SUCCESS(ntStatus))
+        {
+            return ntStatus;
+        }
+        proposedFormat = &selectedFormat.DataFormat;
+    }
+
     //
     // Compute output data buffer.
     //
-    cbMinSize = modeInfo->DefaultFormat->FormatSize;
+    cbMinSize = proposedFormat->FormatSize;
     cbMinSize = (cbMinSize + 7) & ~7;
 
     pKsItemsHeaderOut = (PKSMULTIPLE_ITEM)((PBYTE)PropertyRequest->Value + cbMinSize);
@@ -2376,7 +2527,8 @@ CMiniportWaveRT::PropertyHandlerProposedFormat2
     }
 
     // Copy the proposed default format.
-    RtlCopyMemory(PropertyRequest->Value, modeInfo->DefaultFormat, modeInfo->DefaultFormat->FormatSize);
+    RtlCopyMemory(PropertyRequest->Value, proposedFormat,
+                  proposedFormat->FormatSize);
 
     // Copy back the attribute list.
     ASSERT(cbItemsList > 0);
