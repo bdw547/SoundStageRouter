@@ -97,8 +97,10 @@ Note: `infverif /provider 'SoundStage Router Project'` crashed on this machine's
 
 Do **not** run these from a normal shell; both require admin elevation.
 
-Install (trusts the test certificate, then uses WDK `devcon install` to create
-the required root-enumerated device node):
+Install is idempotent: it discovers and removes every prior matching root
+devnode and every attached or stale published package, trusts the current test
+certificate, creates one root-enumerated device with WDK `devcon install`, and
+fails unless exactly one signed-driver devnode results:
 
 ```powershell
 Start-Process PowerShell -Verb RunAs -ArgumentList '-ExecutionPolicy Bypass -File .\driver\SoundStageRouterVirtualAudio\scripts\Install-SoundStageRouterDriver.ps1 -Force'
@@ -125,6 +127,10 @@ A reboot is required after changing that setting. This repo does **not** enable 
 
 The WDK `devcon.exe` tool is required because `pnputil /add-driver /install`
 cannot create a new root-enumerated device node.
+
+Exactly one **SoundStage Router Surround** endpoint is expected. The script
+asserts the single root devnode immediately; after a requested reboot, confirm
+that Windows Sound settings also shows exactly one endpoint before routing.
 
 ## Production-signing limitation
 

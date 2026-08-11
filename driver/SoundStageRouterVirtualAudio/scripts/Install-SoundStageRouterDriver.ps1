@@ -9,6 +9,7 @@ $ErrorActionPreference = 'Stop'
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $driverRoot = Split-Path -Parent $scriptRoot
 $repoRoot = Split-Path -Parent (Split-Path -Parent $driverRoot)
+Import-Module (Join-Path $scriptRoot 'DriverInstallPlan.psm1') -Force
 
 if (-not $PackageRoot) {
     $PackageRoot = Join-Path $repoRoot 'build\driver\SoundStageRouterVirtualAudio\obj\SoundStageRouterVirtualAudioPackage\x64\Release\SoundStageRouterVirtualAudioPackage'
@@ -60,17 +61,77 @@ if (-not (Test-Path -LiteralPath $certPath)) {
 }
 $devcon = Find-DevCon
 
+$existingDevices = @(Get-CimInstance Win32_PnPSignedDriver |
+    Where-Object {
+        [string]$_.DeviceID -like
+            'ROOT\SOUNDSTAGEROUTERVIRTUALAUDIO\*'
+    })
+$existingPackages = @(Get-WindowsDriver -Online -All)
+$installPlan = New-SoundStageDriverInstallPlan `
+    -Devices $existingDevices -Packages $existingPackages
+
 if ($PSCmdlet.ShouldProcess($certPath, 'Import test certificate into LocalMachine Root and TrustedPublisher')) {
     Import-Certificate -FilePath $certPath -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
     Import-Certificate -FilePath $certPath -CertStoreLocation Cert:\LocalMachine\TrustedPublisher | Out-Null
 }
 
-if ($PSCmdlet.ShouldProcess('Root\SoundStageRouterVirtualAudio', 'Create root device and install driver with devcon')) {
-    & $devcon install $infPath 'Root\SoundStageRouterVirtualAudio'
-    if ($LASTEXITCODE -ne 0) {
-        throw "devcon install failed with exit code $LASTEXITCODE."
+foreach ($deviceInstanceId in $installPlan.DeviceInstanceIds) {
+    if ($PSCmdlet.ShouldProcess(
+        $deviceInstanceId,
+        'Remove existing SoundStage Router root devnode')) {
+        & $devcon remove "@$deviceInstanceId"
+        if (-not (Test-SoundStageDevConSuccess $LASTEXITCODE)) {
+            throw "devcon remove failed for $deviceInstanceId with exit code $LASTEXITCODE."
+        }
     }
 }
 
-Write-Host 'SoundStage Router Surround device created. A reboot may be required before the endpoint appears.'
+foreach ($publishedInfName in $installPlan.PublishedInfNames) {
+    if ($PSCmdlet.ShouldProcess(
+        $publishedInfName,
+        'Remove existing SoundStage Router driver-store package')) {
+        & pnputil /delete-driver $publishedInfName /uninstall /force
+        if ($LASTEXITCODE -ne 0) {
+            throw "pnputil delete-driver failed for $publishedInfName with exit code $LASTEXITCODE."
+        }
+    }
+}
+
+$installed = $false
+if ($PSCmdlet.ShouldProcess('Root\SoundStageRouterVirtualAudio', 'Create exactly one root device and install driver with devcon')) {
+    & $devcon install $infPath 'Root\SoundStageRouterVirtualAudio'
+    if (-not (Test-SoundStageDevConSuccess $LASTEXITCODE)) {
+        throw "devcon install failed with exit code $LASTEXITCODE."
+    }
+    $installed = $true
+}
+
+if ($installed) {
+    $resultingDevices = @()
+    for ($attempt = 0; $attempt -lt 20; $attempt++) {
+        $resultingDevices = @(Get-CimInstance Win32_PnPSignedDriver |
+            Where-Object {
+                [string]$_.DeviceID -like
+                    'ROOT\SOUNDSTAGEROUTERVIRTUALAUDIO\*'
+            })
+        if ($resultingDevices.Count -eq
+            $installPlan.ExpectedFinalDeviceCount) {
+            break
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    if ($resultingDevices.Count -ne
+        $installPlan.ExpectedFinalDeviceCount) {
+        throw "Expected exactly one SoundStage Router root devnode after installation; found $($resultingDevices.Count)."
+    }
+    if ($resultingDevices[0].PSObject.Properties.Name -contains
+        'IsSigned' -and -not $resultingDevices[0].IsSigned) {
+        throw 'The resulting SoundStage Router devnode is not associated with a signed driver package.'
+    }
+    Write-Host 'SoundStage Router Surround has exactly one root devnode. A reboot may be required before the endpoint appears.'
+}
+else {
+    Write-Host 'No installation changes were applied.'
+}
+
 Write-Host "Diagnostics: `"$devcon`" status `"Root\SoundStageRouterVirtualAudio`""
