@@ -4,7 +4,8 @@ Use this protocol only after the synchronized playback software checks pass.
 It requires the target Realtek front output, Bluetooth rear output, one
 stationary microphone, and an external recorder or separate recording
 application. SoundStage Router does not capture the microphone; system mode
-does loopback-capture only the SoundStage Router 5.1 virtual render endpoint.
+does loopback-capture only the **SoundStage Router Surround** virtual render
+endpoint.
 
 ## Setup
 
@@ -17,27 +18,70 @@ does loopback-capture only the SoundStage Router 5.1 virtual render endpoint.
 4. Configure the external recorder for uncompressed 48,000 Hz PCM16 or
    IEEE float32 WAV, mono or stereo.
 
-## System-audio routing acceptance
+## Driver preparation
 
-1. Install the driver by its documented procedure and verify exactly one
-   **SoundStage Router 5.1** endpoint reports 48 kHz, float32, six channels,
-   mask FL/FR/FC/LFE/BL/BR.
-2. Set that endpoint as the Windows default output. In the app select **System
-   audio (virtual 5.1)**, Front and Rear physical devices, and rear fill Off.
-3. Start routing and play a known six-channel channel-identification file from
-   an ordinary shared-mode Windows application. Verify FL/FR/FC/LFE reach only
-   the front pair according to the documented mix and BL/BR reach the rear
-   pair with correct left/right orientation.
-4. Play stereo content and verify rear fill Off is silent at the rear, Duplicate
-   produces rear stereo at -6 dB, and Ambient produces difference ambience.
-   Repeat with native BL/BR content and verify native rear replaces fill.
-5. Confirm choosing the virtual endpoint as a physical output is impossible.
-   Disconnect each physical endpoint in turn, then invalidate/remove the
-   virtual endpoint; each event must stop both outputs and require a manual
-   restart.
-6. Keep diverse system playback running for 30 minutes. Record overflow,
+If Windows still shows the old **SoundStage Router 5.1** development endpoint,
+stop SoundStage Router and use the driver's elevated uninstall script before
+installing the rebuilt, test-signed package. An in-place install does not
+replace the old device instance's name and format list. Follow the exact
+[driver install and uninstall instructions](../../driver/SoundStageRouterVirtualAudio/README.md#install-and-uninstall);
+do not install either package from a normal shell.
+
+The updated endpoint has this exact contract:
+
+| Windows format | Channels | Mask | Channel order |
+|---|---:|---:|---|
+| 5.1 | 6 | `0x003F` (`KSAUDIO_SPEAKER_5POINT1`) | FL, FR, FC, LFE, BL, BR |
+| 7.1 | 8 | `0x063F` (`KSAUDIO_SPEAKER_7POINT1_SURROUND`) | FL, FR, FC, LFE, BL, BR, SL, SR |
+
+Both formats are 48 kHz with 32-bit containers, and the shared audio engine
+provides float32 loopback samples. Windows owns the active-format choice; the
+app only detects and reports it. Stop routing before an intentional format
+change whenever possible.
+
+## Seven-step system-audio routing acceptance
+
+1. Install the updated driver and verify Windows shows exactly one **SoundStage
+   Router Surround** render endpoint. Confirm Windows offers both formats above
+   and initially selects 7.1. Set it as the Windows default output. Confirm the
+   app does not offer the virtual endpoint as a physical Front or Rear output.
+2. In Windows select 5.1 at 48 kHz. In the app select **System audio (virtual
+   surround)**, the target Front and Rear devices, and rear fill Off. Start
+   routing, confirm **5.1 detected**, and play a known six-channel identification
+   file from an ordinary shared-mode application. Verify FL/FR/FC/LFE reach
+   only Front according to `FL + 0.707 FC + 0.5 LFE` and its right-channel
+   equivalent; verify BL/BR reach Rear with correct orientation. Side Level
+   must be disabled and have no signal effect.
+3. Stop routing, select 7.1 at 48 kHz in Windows, and restart routing. Confirm
+   **7.1 detected**, then play a known eight-channel identification file.
+   Verify all channels follow the documented order and that Front behavior is
+   unchanged.
+4. With isolated native channels, confirm Back Left and Side Left reach only
+   the left chair speaker, while Back Right and Side Right reach only the right
+   chair speaker. The chair formulas must be `BackGain × BL + SideGain × SL`
+   and `BackGain × BR + SideGain × SR`.
+5. Exercise Back Level and Side Level independently at 0%, 50%, and 100%.
+   Confirm each control remains linked stereo, is live without a routing
+   restart, and has no fixed attenuation: an isolated contribution at 100%
+   matches its source level. When Back and Side are present together, only the
+   existing output limiter may reduce an overload. Also verify native Back or
+   Side content suppresses rear fill even when its logical level is 0%.
+6. While routing, change the Windows format. Verify capture and both physical
+   outputs stop safely and the app reports a fault; it must not restart
+   automatically. After the format change completes, restart manually and
+   confirm the correct detected-format label. Also disconnect each physical
+   endpoint in turn and invalidate/remove the virtual endpoint; each event
+   must stop both outputs and require a manual restart.
+7. Repeat the paired-click start and 30-minute recordings below. Both analyzer
+   runs must meet the established 10 ms at 95% acoustic-alignment requirement.
+   During the interval, also play diverse system content and record overflow,
    underrun, clock-correction, and audible-glitch observations. The app must
    remain open throughout.
+
+Separately, play stereo content and verify rear fill Off is silent at Rear,
+Duplicate produces rear stereo at -6 dB, and Ambient produces difference
+ambience. Repeat with native Back or Side content and verify native surround
+replaces fill.
 
 ## Start recording
 

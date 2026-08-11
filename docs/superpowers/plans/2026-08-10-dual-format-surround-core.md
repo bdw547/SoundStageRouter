@@ -32,7 +32,7 @@
 - Consumes: the imported `feature/system-wide-routing` branch plus its preserved uncommitted driver event-mode and physical-output level changes
 - Produces: a clean, tested baseline commit before dual-format edits begin
 
-- [ ] **Step 1: Confirm the preserved patch is exactly the imported work**
+- [x] **Step 1: Confirm the preserved patch is exactly the imported work**
 
 Run:
 
@@ -44,7 +44,7 @@ git diff --stat
 
 Expected: 19 modified files, no untracked production files, and no whitespace errors.
 
-- [ ] **Step 2: Build and run the existing Debug tests**
+- [x] **Step 2: Build and run the existing Debug tests**
 
 Run:
 
@@ -55,7 +55,7 @@ Run:
 
 Expected: build succeeds and the test executable reports zero failures.
 
-- [ ] **Step 3: Build and run the existing Release tests**
+- [x] **Step 3: Build and run the existing Release tests**
 
 Run:
 
@@ -66,7 +66,7 @@ Run:
 
 Expected: build succeeds and the test executable reports zero failures.
 
-- [ ] **Step 4: Commit only the preserved baseline files**
+- [x] **Step 4: Commit only the preserved baseline files**
 
 ```powershell
 git add driver src tests
@@ -87,7 +87,7 @@ git commit -m "feat: preserve system routing reliability and level controls"
 - Consumes: `MasterSampleRate`, `RearFillMode`, and the existing `RoleFrame`
 - Produces: `VirtualSurroundFormat`, `DetectVirtualSurroundFormat(...)`, `SurroundMixLevels`, the eight-field `SurroundFrame`, and `RouteSurroundFrame(const SurroundFrame&, RearFillMode, SurroundMixLevels)`
 
-- [ ] **Step 1: Write failing contract and matrix tests**
+- [x] **Step 1: Write failing contract and matrix tests**
 
 Add expectations equivalent to:
 
@@ -117,7 +117,7 @@ EXPECT_NEAR(balanced.rear.right, -0.25, 1e-7);
 
 Also prove that Side-only input suppresses rear fill even when `sideGain` is zero, that both gains clamp to `[0,1]`, and that the original Front matrix expectations remain unchanged.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.Tests.vcxproj -t:Build -p:Configuration=Debug -p:Platform=x64
@@ -125,7 +125,7 @@ Also prove that Side-only input suppresses rear fill even when `sideGain` is zer
 
 Expected: compilation fails because the new contract, fields, and signature do not exist.
 
-- [ ] **Step 3: Implement the pure format contract**
+- [x] **Step 3: Implement the pure format contract**
 
 Create this public shape in `VirtualSurroundContract.h`:
 
@@ -153,7 +153,7 @@ DetectVirtualSurroundFormat(const VirtualFormatDescription value) noexcept;
 
 Return `FivePointOne` only for `{48000,6,32,24,0x003F,true}`, `SevenPointOne` only for `{48000,8,32,32,0x063F,true}`, and `Unsupported` otherwise.
 
-- [ ] **Step 4: Expand the frame and implement the gain-aware matrix**
+- [x] **Step 4: Expand the frame and implement the gain-aware matrix**
 
 Add `sideLeft` and `sideRight` after the Back fields. Add:
 
@@ -167,7 +167,7 @@ struct SurroundMixLevels
 
 Clamp each gain once, detect native rear content from BL/BR/SL/SR before gain, compute `back * BL + side * SL` and its right-channel equivalent, and then use the existing `Limit` function. Preserve the current Front and rear-fill formulas exactly.
 
-- [ ] **Step 5: Build and run all Debug tests**
+- [x] **Step 5: Build and run all Debug tests**
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.sln -t:Build -p:Configuration=Debug -p:Platform=x64
@@ -176,7 +176,7 @@ Clamp each gain once, detect native rear content from BL/BR/SL/SR before gain, c
 
 Expected: all tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src/audio/VirtualSurroundContract.h src/audio/AudioTypes.h src/audio/ChannelRouter.h src/audio/ChannelRouter.cpp tests/audio/AudioTypesTests.cpp tests/audio/ChannelRouterTests.cpp
@@ -194,7 +194,7 @@ git commit -m "feat: route configurable back and side surround channels"
 - Consumes: `VirtualSurroundFormat`, `VirtualFormatDescription`, `SurroundMixLevels`, and the gain-aware `RouteSurroundFrame`
 - Produces: `CaptureTelemetry::surroundFormat`, `ILoopbackCapture::SetSurroundMixLevels(SurroundMixLevels)`, and safe six/eight-channel packet decoding
 
-- [ ] **Step 1: Write failing loopback tests**
+- [x] **Step 1: Write failing loopback tests**
 
 Add tests that make the fake backend report both exact formats, then feed one frame per format:
 
@@ -207,23 +207,23 @@ EXPECT_EQ(capture.Snapshot().surroundFormat,
 
 Read the routed frame from the ring and expect Rear `{0.75,-0.75}` at 100/100. Call `SetSurroundMixLevels({0.0f,0.5f})`, feed another frame, and expect `{0.25,-0.25}`. Add a six-channel case that yields Side zero and a wrong-mask case that fails preparation with `VirtualEndpointFormatCode`.
 
-- [ ] **Step 2: Build to verify RED**
+- [x] **Step 2: Build to verify RED**
 
 Run the Debug test-project build. Expected: compilation fails on the missing telemetry field and setter.
 
-- [ ] **Step 3: Replace the fixed 5.1 contract**
+- [x] **Step 3: Replace the fixed 5.1 contract**
 
 Rename the friendly-name constant to `L"SoundStage Router Surround"`. Make `IsVirtualCaptureFormat` call `DetectVirtualSurroundFormat` and accept either supported result. Store the detected result after `GetMixFormat` and publish it in telemetry.
 
-- [ ] **Step 4: Decode packets using the detected channel stride**
+- [x] **Step 4: Decode packets using the detected channel stride**
 
 Use `format.channels` instead of the literal `6`. Always load indices 0–5; load 6–7 only for `SevenPointOne`. Apply the packet endpoint master gain to all populated fields. Do not read Side samples from a six-channel span.
 
-- [ ] **Step 5: Add lock-free live level publication**
+- [x] **Step 5: Add lock-free live level publication**
 
 Store clamped Back and Side gains as two `std::atomic<float>` members in `WasapiLoopbackCapture::Impl`. `SetSurroundMixLevels` publishes them with release ordering. The worker loads them with acquire ordering immediately before `RouteSurroundFrame`.
 
-- [ ] **Step 6: Run Debug tests and commit**
+- [x] **Step 6: Run Debug tests and commit**
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.sln -t:Build -p:Configuration=Debug -p:Platform=x64
@@ -250,27 +250,27 @@ git commit -m "feat: capture 5.1 and 7.1 virtual audio"
 - Consumes: `ILoopbackCapture::SetSurroundMixLevels` and existing coordinator command serialization
 - Produces: `RouterSettings::{backLevelPercent,sideLevelPercent}`, `RunConfiguration::surroundMix`, `EngineController::SetSurroundMixLevels`, and `AudioEngineCoordinator::PostSurroundMixLevels`
 
-- [ ] **Step 1: Write failing settings tests**
+- [x] **Step 1: Write failing settings tests**
 
 Verify a file with no new keys loads both values as 100 without setting `loadAdjustedValues`; round-trip `BackLevelPercent=40` and `SideLevelPercent=75`; and verify `-1`, `101`, and non-numeric values fall back to 100 and mark adjusted values.
 
-- [ ] **Step 2: Write failing engine/coordinator tests**
+- [x] **Step 2: Write failing engine/coordinator tests**
 
 Extend the fake capture with `lastMixLevels`. Start system routing with `{0.4f,0.75f}`, expect `Prepare` to receive those values, then post `{0.2f,1.0f}` and expect the live setter exactly once without restarting capture.
 
-- [ ] **Step 3: Build to verify RED**
+- [x] **Step 3: Build to verify RED**
 
 Run the Debug test-project build. Expected: compilation fails for missing settings, configuration, and command APIs.
 
-- [ ] **Step 4: Implement settings parsing separately from delay parsing**
+- [x] **Step 4: Implement settings parsing separately from delay parsing**
 
 Add a `ParsePercent` helper accepting only decimal integers 0–100. Use keys `BackLevelPercent` and `SideLevelPercent`, defaults `100`, and the migration behavior from the spec. Do not reuse `ParseDelay`, whose valid range is 0–2000.
 
-- [ ] **Step 5: Thread the mix through startup and live commands**
+- [x] **Step 5: Thread the mix through startup and live commands**
 
 Add `SurroundMixLevels surroundMix{}` to `RunConfiguration`. During system-audio startup, publish it to capture before `Start`. Add coordinator `CommandType::SurroundMix` carrying the two floats and dispatch it to `EngineController::SetSurroundMixLevels`. In test-signal mode the setter is a safe no-op because capture is absent.
 
-- [ ] **Step 6: Run all Debug tests and commit**
+- [x] **Step 6: Run all Debug tests and commit**
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.sln -t:Build -p:Configuration=Debug -p:Platform=x64
@@ -293,23 +293,23 @@ git commit -m "feat: persist and publish surround mix levels"
 - Consumes: the shared virtual format detector and capture telemetry
 - Produces: `EngineStatus::surroundFormat`, dual-format virtual contract validation, and neutral user-facing fault text
 
-- [ ] **Step 1: Add failing status and fault tests**
+- [x] **Step 1: Add failing status and fault tests**
 
 Make fake capture telemetry report `SevenPointOne` and assert `EngineStatus::surroundFormat` matches after `Tick`. Add expectations that missing/duplicate/wrong-format messages name `SoundStage Router Surround`, not `5.1`.
 
-- [ ] **Step 2: Build to verify RED**
+- [x] **Step 2: Build to verify RED**
 
 Expected: compilation fails because `EngineStatus::surroundFormat` is absent and old strings remain.
 
-- [ ] **Step 3: Reuse the exact shared contract in endpoint enumeration**
+- [x] **Step 3: Reuse the exact shared contract in endpoint enumeration**
 
 Set `isVirtualEndpoint` for the neutral interface name or existing WDM identity. Set `virtualContractValid` when `DetectVirtualSurroundFormat` returns either supported value. Continue excluding any `isVirtualEndpoint` item from Front/Rear choices.
 
-- [ ] **Step 4: Publish format and improve capture fault text**
+- [x] **Step 4: Publish format and improve capture fault text**
 
 Copy `CaptureTelemetry::surroundFormat` into `EngineStatus` in system-audio mode. Replace fixed 5.1 fault copy with the neutral endpoint name and explicit 5.1/7.1 at 48 kHz guidance for `VirtualEndpointFormatCode`.
 
-- [ ] **Step 5: Run all Debug tests and commit**
+- [x] **Step 5: Run all Debug tests and commit**
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.sln -t:Build -p:Configuration=Debug -p:Platform=x64
@@ -331,7 +331,7 @@ git commit -m "feat: detect active virtual surround format"
 - Consumes: SysVAD host/offload/loopback format-table conventions
 - Produces: one neutral endpoint whose default descriptor is 8-channel `0x063F` and whose second supported descriptor is 6-channel `0x003F`
 
-- [ ] **Step 1: Record the pre-change driver failure**
+- [x] **Step 1: Record the pre-change driver failure**
 
 Run:
 
@@ -341,7 +341,7 @@ rg -n 'MAX_CHANNELS\s+6|KSAUDIO_SPEAKER_5POINT1|SoundStage Router 5.1' driver/So
 
 Expected: the format tables, topology, INF, docs, and install message still prove a fixed 5.1 contract.
 
-- [ ] **Step 2: Add 7.1-first and 5.1-second format entries**
+- [x] **Step 2: Add 7.1-first and 5.1-second format entries**
 
 For every engine/host/offload supported-format array, make index 0:
 
@@ -353,26 +353,26 @@ KSDATAFORMAT_SUBTYPE_PCM
 
 and index 1 the current six-channel `{1152000,24,0x003F}` descriptor. Set device, host, offload, and loopback maximum channels to 8. Keep processing-mode defaults pointed at index 0 and keep both entries in each pin's supported list.
 
-- [ ] **Step 3: Update topology and names**
+- [x] **Step 3: Update topology and names**
 
 Advertise the maximum physical jack layout as `KSAUDIO_SPEAKER_7POINT1_SURROUND`. Change Wave and Topology friendly names and user-visible script messages to `SoundStage Router Surround`. Keep existing internal KS symbolic identifiers so an unnecessary PnP identity migration is not introduced.
 
-- [ ] **Step 4: Build and validate the driver package**
+- [x] **Step 4: Build and validate the driver package**
 
 Run from an elevated developer environment:
 
 ```powershell
 & '.\driver\SoundStageRouterVirtualAudio\scripts\Build-Driver.ps1' -Configuration Debug -Platform x64
-& 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\infverif.exe' /v '.\build\driver\SoundStageRouterVirtualAudio\obj\SoundStageRouterVirtualAudioPackage\x64\Debug\SoundStageRouterVirtualAudioPackage\SoundStageRouterVirtualAudio.inf'
+& 'C:\Program Files (x86)\Windows Kits\10\Tools\10.0.28000.0\x64\infverif.exe' /v '.\build\driver\SoundStageRouterVirtualAudio\obj\SoundStageRouterVirtualAudioPackage\x64\Debug\SoundStageRouterVirtualAudioPackage\SoundStageRouterVirtualAudio.inf'
 ```
 
 Expected: driver build and INF verification succeed.
 
-- [ ] **Step 5: Re-scan the source contract**
+- [x] **Step 5: Re-scan the source contract**
 
 Run the Task 5 Step 1 `rg` command. Expected: fixed-5.1 prose/names are gone; remaining `KSAUDIO_SPEAKER_5POINT1` occurrences are only the intended second supported format.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add driver/SoundStageRouterVirtualAudio
@@ -391,15 +391,15 @@ git commit -m "feat(driver): offer 5.1 and 7.1 surround formats"
 - Consumes: saved Back/Side percentages, `RunConfiguration::surroundMix`, coordinator live commands, and `EngineStatus::surroundFormat`
 - Produces: live Back Level and Side Level trackbars, a detected-format badge, and neutral 5.1/7.1 copy
 
-- [ ] **Step 1: Initialize common controls and create stable command IDs**
+- [x] **Step 1: Initialize common controls and create stable command IDs**
 
 Initialize `ICC_BAR_CLASSES` in `main.cpp`. Add Back/Side labels, trackbars, percentage values, and a format-status control in `AppWindow`. Configure both trackbars for 0–100 with tick frequency 10 and page size 10.
 
-- [ ] **Step 2: Load, save, and start with the selected values**
+- [x] **Step 2: Load, save, and start with the selected values**
 
 Populate trackbar positions from `RouterSettings`. Save them as integers. In `BuildRunConfiguration`, convert them to `{back / 100.0f, side / 100.0f}`. Keep both at 100 for missing legacy keys.
 
-- [ ] **Step 3: Publish live slider changes**
+- [x] **Step 3: Publish live slider changes**
 
 Handle `WM_HSCROLL` only for the two surround trackbars. Update their percentage labels, save the settings, and call:
 
@@ -411,11 +411,11 @@ coordinator_->PostSurroundMixLevels({
 
 Do not restart routing.
 
-- [ ] **Step 4: Render the detected format and mode-specific availability**
+- [x] **Step 4: Render the detected format and mode-specific availability**
 
 Display `5.1 detected`, `7.1 detected`, or `Surround format unavailable` from `EngineStatus`. Disable Side Level in system-audio 5.1 mode while keeping it visible. Enable it for 7.1 and test-signal setup. Replace all user-facing `SoundStage Router 5.1` copy with the neutral endpoint name.
 
-- [ ] **Step 5: Build and run Debug tests**
+- [x] **Step 5: Build and run Debug tests**
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.sln -t:Build -p:Configuration=Debug -p:Platform=x64
@@ -424,7 +424,7 @@ Display `5.1 detected`, `7.1 detected`, or `Surround format unavailable` from `E
 
 Expected: application and tests build and all automated tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src/AppWindow.h src/AppWindow.cpp src/main.cpp SoundStageRouter.vcxproj
@@ -442,11 +442,11 @@ git commit -m "feat: add 5.1 and 7.1 surround controls"
 - Consumes: completed driver and application behavior
 - Produces: exact setup, switching, matrix, control, reinstall, and acceptance instructions
 
-- [ ] **Step 1: Update user and hardware documentation**
+- [x] **Step 1: Update user and hardware documentation**
 
 Document the neutral endpoint, Windows-owned format selection, exact 5.1 and 7.1 masks/order, Back/Side formulas, 0–100% controls, no fixed attenuation, old-driver removal, safe stop on format change, and the seven-step hardware procedure from the design spec.
 
-- [ ] **Step 2: Run repository consistency checks**
+- [x] **Step 2: Run repository consistency checks**
 
 ```powershell
 rg -n 'SoundStage Router 5.1|virtual 5.1|fixed 5.1' README.md docs src driver tests
@@ -455,7 +455,7 @@ git diff --check
 
 Expected: any remaining 5.1-specific text describes the selectable format, migration, or test case; no stale endpoint name or whitespace error remains.
 
-- [ ] **Step 3: Rebuild and test Debug**
+- [x] **Step 3: Rebuild and test Debug**
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.sln -t:Rebuild -p:Configuration=Debug -p:Platform=x64
@@ -464,7 +464,7 @@ Expected: any remaining 5.1-specific text describes the selectable format, migra
 
 Expected: build succeeds and all tests pass.
 
-- [ ] **Step 4: Rebuild and test Release**
+- [x] **Step 4: Rebuild and test Release**
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.sln -t:Rebuild -p:Configuration=Release -p:Platform=x64
@@ -473,16 +473,16 @@ Expected: build succeeds and all tests pass.
 
 Expected: build succeeds and all tests pass.
 
-- [ ] **Step 5: Build and validate the Release driver**
+- [x] **Step 5: Build and validate the Release driver**
 
 ```powershell
 & '.\driver\SoundStageRouterVirtualAudio\scripts\Build-Driver.ps1' -Configuration Release -Platform x64
-& 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\infverif.exe' /v '.\build\driver\SoundStageRouterVirtualAudio\obj\SoundStageRouterVirtualAudioPackage\x64\Release\SoundStageRouterVirtualAudioPackage\SoundStageRouterVirtualAudio.inf'
+& 'C:\Program Files (x86)\Windows Kits\10\Tools\10.0.28000.0\x64\infverif.exe' /w /v '.\build\driver\SoundStageRouterVirtualAudio\obj\SoundStageRouterVirtualAudioPackage\x64\Release\SoundStageRouterVirtualAudioPackage\SoundStageRouterVirtualAudio.inf'
 ```
 
 Expected: driver build, signing, and INF verification succeed.
 
-- [ ] **Step 6: Commit documentation and plan checkmarks**
+- [x] **Step 6: Commit documentation and plan checkmarks**
 
 ```powershell
 git add README.md docs/testing/hardware-acceptance.md docs/superpowers/plans/2026-08-10-dual-format-surround-core.md

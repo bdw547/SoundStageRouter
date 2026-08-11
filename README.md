@@ -6,38 +6,72 @@ audio outputs as one front/rear listening layout.
 ## System-wide routing
 
 The app loopback-captures the Windows mix from the installed **SoundStage
-Router 5.1** render endpoint and sends one shared 48 kHz master timeline to two
+Router Surround** render endpoint and sends one shared 48 kHz master timeline to two
 physical shared-mode WASAPI outputs. It never captures another endpoint and
 does not use custom driver IOCTLs.
 
 After installing the driver using its separate instructions:
 
-1. Open Windows sound settings and make **SoundStage Router 5.1** the default
-   output.
-2. Start SoundStage Router and select **System audio (virtual 5.1)**.
-3. Select distinct physical Front and Rear outputs. The virtual endpoint is
+1. Stop routing before changing the endpoint's speaker format. In Windows sound
+   settings, choose 5.1 or 7.1 at 48 kHz for **SoundStage Router Surround**;
+   Windows owns this choice, and the app detects it automatically.
+2. Make **SoundStage Router Surround** the Windows default output.
+3. Start SoundStage Router and select **System audio (virtual surround)**. Check
+   for **5.1 detected** or **7.1 detected** in the app.
+4. Select distinct physical Front and Rear outputs. The virtual endpoint is
    deliberately unavailable in these selectors to prevent feedback.
-4. Choose rear fill if desired: **Off** (default), **Duplicate (-6 dB)**, or
+5. Choose rear fill if desired: **Off** (default), **Duplicate (-6 dB)**, or
    **Ambient difference**.
-5. Click **Start Routing**, then play audio in any Windows application.
+6. Set the linked-stereo **Back Level** and **Side Level** controls from 0–100%,
+   then click **Start Routing** and play audio in any Windows application.
 
 The app must stay running for routed audio to reach the physical devices.
 Disconnecting the virtual input or either physical output stops the run with a
-visible fault; restart is always manual.
+visible fault; restart is always manual. Changing the Windows speaker format
+during a run also stops routing safely. After Windows finishes the change,
+start routing again and confirm the newly detected format. There is no
+automatic restart.
 
-The deterministic 5.1-to-stereo matrix is:
+The virtual endpoint supports these exact shared-mode loopback layouts:
+
+| Windows format | Channels | Mask | Channel order |
+|---|---:|---:|---|
+| 5.1 | 6 | `0x003F` (`KSAUDIO_SPEAKER_5POINT1`) | FL, FR, FC, LFE, BL, BR |
+| 7.1 | 8 | `0x063F` (`KSAUDIO_SPEAKER_7POINT1_SURROUND`) | FL, FR, FC, LFE, BL, BR, SL, SR |
+
+Both are 48 kHz with 32-bit containers; the Windows shared audio engine
+provides float32 loopback samples. The driver initially defaults to 7.1 while
+5.1 remains selectable.
+
+The deterministic surround-to-physical matrix is:
 
 - Front L = clamp(FL + 0.707 FC + 0.5 LFE)
 - Front R = clamp(FR + 0.707 FC + 0.5 LFE)
-- Rear L/R = clamp(BL/BR)
+- Rear L = clamp((Back Level / 100) × BL + (Side Level / 100) × SL)
+- Rear R = clamp((Back Level / 100) × BR + (Side Level / 100) × SR)
 
-Rear fill is applied only when both native rear channels are silent. Ambient
-uses `0.5 * (FL - FR)` and its inverse. The test-signal mode remains available
-for setup, click alignment, role tones, and live 0–2000 ms delay adjustment.
+Back and Side are independently adjustable linked-stereo contributions. They
+default to 100%, have no fixed attenuation, and are limited only if their sum
+exceeds the valid sample range. In 5.1, Side samples are zero and Side Level is
+disabled because it has no signal effect. The existing physical Front and Rear
+levels remain separate post-routing master gains.
+
+Rear fill is applied only when all native BL, BR, SL, and SR samples are
+silent, as determined before the Back/Side controls are applied. Setting a
+native contribution to 0% therefore does not make fill appear. Ambient uses
+`0.5 * (FL - FR)` and its inverse. The test-signal mode remains available for
+setup, click alignment, role tones, and live 0–2000 ms delay adjustment.
 
 Settings remain in
 `%LOCALAPPDATA%\SoundStageRouter\routing.ini`, including endpoint assignments,
-delays, mode, rear-fill choice, and the last test pattern.
+delays, mode, rear-fill choice, physical output levels, Back/Side levels, and
+the last test pattern. Older settings files default the new levels to 100%.
+
+If an older development driver still exposes **SoundStage Router 5.1**, stop
+the app and remove that instance before installing the rebuilt package; the
+new endpoint name and format list do not take effect in-place. Use the elevated
+uninstall and install commands in the
+[driver instructions](driver/SoundStageRouterVirtualAudio/README.md#install-and-uninstall).
 
 ## Build and test
 
@@ -92,11 +126,13 @@ exits. Applications that bypass the Windows default endpoint are not captured.
 - [Synchronized playback implementation plan](docs/superpowers/plans/2026-08-08-synchronized-test-playback.md)
 - [Separate acoustic alignment analyzer plan](docs/superpowers/plans/2026-08-08-acoustic-alignment-analyzer.md)
 
-## Virtual 5.1 driver (kernel slice)
+## Virtual surround driver (kernel slice)
 
 A separate SysVAD-derived kernel driver slice lives under
 `driver\SoundStageRouterVirtualAudio`. It targets development-only, test-signed
 installation of one root-enumerated virtual render endpoint named
-**SoundStage Router 5.1**. Building the app does not install the driver.
+**SoundStage Router Surround**. It offers Windows-selectable 5.1 and 7.1
+formats and initially defaults to 7.1. Building the app does not install the
+driver.
 
 See `driver\SoundStageRouterVirtualAudio\README.md` for exact build, `infverif`, install, uninstall, signing, and upstream-license details.
