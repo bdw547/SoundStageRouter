@@ -128,6 +128,20 @@ TEST(SurroundUi_ExplainsDisabledSideLevelForFivePointOne)
               std::wstring(L"Used when Windows is set to 7.1."));
 }
 
+TEST(SurroundUi_LeavesSideLevelHintEmptyWhileTestModeKeepsItLive)
+{
+    EngineStatus status;
+    status.state = PlaybackState::Stopped;
+    status.surroundFormat = VirtualSurroundFormat::FivePointOne;
+
+    const SurroundUiState ui = BuildSurroundUiState(
+        status, PlaybackMode::TestSignals);
+
+    EXPECT_TRUE(ui.sideLevelEnabled);
+    EXPECT_TRUE(ui.sideLevelHint.empty());
+    EXPECT_TRUE(ui.hint.empty());
+}
+
 TEST(SurroundUi_PresentsSettlingClockInPlainLanguage)
 {
     EngineStatus status;

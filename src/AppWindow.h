@@ -29,11 +29,13 @@ namespace soundstage
         LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
 
         void CreateControls();
-        void LayoutControls(int width, int height) const;
+        void LayoutControls(int width, int height);
         void ApplyThemeFonts() const;
         void PaintWindow(HDC dc) const;
         void SetTechnicalDetailsExpanded(bool expanded);
         void UpdateTechnicalDetailsVisibility() const;
+        void SetScrollOffset(int offset);
+        void HandleVerticalScroll(int request);
         [[nodiscard]] bool RefreshDevices();
         void PopulateControls();
         void UpdateModeControls();
@@ -111,6 +113,8 @@ namespace soundstage
         bool frontCardFault_ = false;
         bool chairCardFault_ = false;
         bool modelRecoveryVisible_ = false;
+        int scrollOffset_ = 0;
+        bool sideLevelWasEnabled_ = true;
 
         std::vector<AudioEndpoint> endpoints_;
         bool hasSingleVirtualEndpoint_ = false;

@@ -30,6 +30,9 @@ namespace soundstage::ui
         RECT actionBar{};
         SIZE minimumClientSize{};
         SIZE preferredClientSize{};
+        // Height of the laid-out canvas. Never less than the design height,
+        // so a client shorter than the design scrolls instead of overlapping.
+        int virtualHeight = 0;
         bool stacked = false;
         bool detailsVisible = false;
     };

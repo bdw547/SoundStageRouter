@@ -78,29 +78,32 @@ namespace soundstage::ui
         const int margin = scale(stacked ? 16 : 32);
         const int gap = scale(stacked ? 12 : 24);
         const int headerHeight = scale(stacked ? 56 : 72);
-        const int actionHeight = scale(stacked ? 74 : 88);
+        const int actionHeight = scale(stacked ? 108 : 88);
         const int detailsHeight = scale(240);
+        const int minMainHeight = scale(stacked ? 534 : 448);
 
         CommandDeckLayout layout;
         layout.stacked = stacked;
         layout.detailsVisible = technicalDetailsExpanded;
-        layout.minimumClientSize = {
-            scale(720),
-            scale(720 + (technicalDetailsExpanded ? 252 : 0))};
+        layout.minimumClientSize = {scale(720), scale(480)};
         layout.preferredClientSize = {
             scale(1240),
             scale(780 + (technicalDetailsExpanded ? 264 : 0))};
+
+        const int designHeight = margin + headerHeight + gap + minMainHeight +
+            (technicalDetailsExpanded ? detailsHeight + gap : 0) +
+            gap + actionHeight + margin;
+        const int effectiveHeight = std::max(clientHeight, designHeight);
+        layout.virtualHeight = effectiveHeight;
 
         const int right = std::max(margin, clientWidth - margin);
         layout.header = MakeRect(
             margin, margin, right, margin + headerHeight);
         layout.actionBar = MakeRect(
             margin,
-            std::max(static_cast<int>(layout.header.bottom) + gap,
-                     clientHeight - margin - actionHeight),
+            effectiveHeight - margin - actionHeight,
             right,
-            std::max(static_cast<int>(layout.header.bottom) + gap + actionHeight,
-                     clientHeight - margin));
+            effectiveHeight - margin);
 
         int mainBottom = layout.actionBar.top - gap;
         if (technicalDetailsExpanded)

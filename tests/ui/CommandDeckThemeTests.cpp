@@ -60,7 +60,24 @@ TEST(CommandDeckLayout_PreservesDipGeometryAtTwoHundredPercent)
     EXPECT_EQ(layout.mixCard.left - layout.frontCard.right, 48L);
     EXPECT_EQ(layout.actionBar.top, 1320L);
     EXPECT_EQ(layout.minimumClientSize.cx, 1440L);
-    EXPECT_EQ(layout.minimumClientSize.cy, 1440L);
+    EXPECT_EQ(layout.minimumClientSize.cy, 960L);
+}
+
+TEST(CommandDeckLayout_FloorsShortClientsToAScrollableCanvas)
+{
+    const auto layout = ComputeCommandDeckLayout(1240, 500, 96, true);
+
+    EXPECT_EQ(layout.virtualHeight, 984);
+    EXPECT_EQ(layout.actionBar.bottom, 952L);
+    EXPECT_TRUE(Height(layout.frontCard) >= 212);
+    EXPECT_TRUE(Height(layout.chairCard) >= 212);
+    EXPECT_TRUE(layout.frontCard.bottom < layout.chairCard.top);
+    EXPECT_TRUE(layout.chairCard.bottom <= layout.detailsCard.top - 24);
+    EXPECT_TRUE(layout.detailsCard.bottom <= layout.actionBar.top - 24);
+
+    const auto tall = ComputeCommandDeckLayout(1240, 1200, 96, true);
+    EXPECT_EQ(tall.virtualHeight, 1200);
+    EXPECT_EQ(tall.actionBar.bottom, 1168L);
 }
 
 TEST(CommandDeckLayout_ExpandedDetailsAddsPanelWithoutMovingMainCards)

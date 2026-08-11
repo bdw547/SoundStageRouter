@@ -23,8 +23,6 @@ namespace soundstage::audio
             {
                 ui.formatText = L"5.1 detected";
                 ui.badge = L"5.1 detected";
-                ui.sideLevelHint = L"Used when Windows is set to 7.1.";
-                ui.hint = L"Used when Windows is set to 7.1.";
             }
             else if (format == VirtualSurroundFormat::SevenPointOne)
             {
@@ -102,6 +100,14 @@ namespace soundstage::audio
             mode == PlaybackMode::TestSignals ||
             status.surroundFormat == VirtualSurroundFormat::SevenPointOne;
         ui.sideEnabled = ui.sideLevelEnabled;
+        // Explain the disabled control only while it is actually disabled;
+        // in test-signal mode the side slider stays live in 5.1.
+        if (!ui.sideLevelEnabled &&
+            status.surroundFormat == VirtualSurroundFormat::FivePointOne)
+        {
+            ui.sideLevelHint = L"Used when Windows is set to 7.1.";
+            ui.hint = L"Used when Windows is set to 7.1.";
+        }
 
         const bool inactive =
             status.state == PlaybackState::Stopped ||

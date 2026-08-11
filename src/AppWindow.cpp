@@ -8,6 +8,7 @@
 #include <windowsx.h>
 
 #include <algorithm>
+#include <climits>
 #include <iomanip>
 #include <optional>
 #include <sstream>
@@ -88,17 +89,28 @@ namespace soundstage
         }
 
         constexpr DWORD windowStyle =
-            WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
+            WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_VSCROLL;
         constexpr DWORD extendedStyle = WS_EX_CONTROLPARENT;
         RECT initialBounds{
             0, 0, theme_->Scale(1240), theme_->Scale(780)};
         AdjustWindowRectExForDpi(
             &initialBounds, windowStyle, FALSE, extendedStyle, theme_->Dpi());
+        int initialWidth = initialBounds.right - initialBounds.left;
+        int initialHeight = initialBounds.bottom - initialBounds.top;
+        RECT workArea{};
+        if (SystemParametersInfoW(SPI_GETWORKAREA, 0, &workArea, 0))
+        {
+            initialWidth = std::min(
+                initialWidth,
+                static_cast<int>(workArea.right - workArea.left));
+            initialHeight = std::min(
+                initialHeight,
+                static_cast<int>(workArea.bottom - workArea.top));
+        }
         window_ = CreateWindowExW(
             extendedStyle, WindowClassName, L"SoundStage Router",
             windowStyle, CW_USEDEFAULT, CW_USEDEFAULT,
-            initialBounds.right - initialBounds.left,
-            initialBounds.bottom - initialBounds.top,
+            initialWidth, initialHeight,
             nullptr, nullptr, instance_, this);
         if (window_ == nullptr)
         {
@@ -173,10 +185,40 @@ namespace soundstage
                 FALSE,
                 static_cast<DWORD>(GetWindowLongPtrW(window_, GWL_EXSTYLE)),
                 theme_->Dpi());
-            info->ptMinTrackSize.x = bounds.right - bounds.left;
-            info->ptMinTrackSize.y = bounds.bottom - bounds.top;
+            int minWidth = bounds.right - bounds.left;
+            int minHeight = bounds.bottom - bounds.top;
+            MONITORINFO monitorInfo{};
+            monitorInfo.cbSize = sizeof(monitorInfo);
+            if (GetMonitorInfoW(
+                    MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST),
+                    &monitorInfo))
+            {
+                minWidth = std::min(
+                    minWidth,
+                    static_cast<int>(monitorInfo.rcWork.right -
+                                     monitorInfo.rcWork.left));
+                minHeight = std::min(
+                    minHeight,
+                    static_cast<int>(monitorInfo.rcWork.bottom -
+                                     monitorInfo.rcWork.top));
+            }
+            info->ptMinTrackSize.x = minWidth;
+            info->ptMinTrackSize.y = minHeight;
             return 0;
         }
+        case WM_VSCROLL:
+            if (lParam == 0)
+            {
+                HandleVerticalScroll(LOWORD(wParam));
+                return 0;
+            }
+            break;
+        case WM_MOUSEWHEEL:
+            SetScrollOffset(
+                scrollOffset_ -
+                GET_WHEEL_DELTA_WPARAM(wParam) * theme_->Scale(96) /
+                    WHEEL_DELTA);
+            return 0;
         case WM_SIZE:
             if (wParam != SIZE_MINIMIZED)
             {
@@ -418,12 +460,6 @@ namespace soundstage
             0, 0, 0, 0, window_, ControlId(RearLevelId),
             instance_, nullptr);
 
-        patternLabel_ = CreateLabel(window_, L"Test pattern");
-        patternCombo_ = CreateWindowExW(
-            WS_EX_CLIENTEDGE, L"COMBOBOX", L"",
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
-            0, 0, 0, 0, window_, ControlId(PatternComboId),
-            instance_, nullptr);
         modeLabel_ = CreateLabel(window_, L"Source mode");
         modeCombo_ = CreateWindowExW(
             WS_EX_CLIENTEDGE, L"COMBOBOX", L"",
@@ -435,6 +471,12 @@ namespace soundstage
         ComboBox_SetCurSel(
             modeCombo_,
             settings_.mode == audio::PlaybackMode::SystemAudio ? 0 : 1);
+        patternLabel_ = CreateLabel(window_, L"Test pattern");
+        patternCombo_ = CreateWindowExW(
+            WS_EX_CLIENTEDGE, L"COMBOBOX", L"",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+            0, 0, 0, 0, window_, ControlId(PatternComboId),
+            instance_, nullptr);
         rearFillLabel_ = CreateLabel(window_, L"Rear fill");
         rearFillCombo_ = CreateWindowExW(
             WS_EX_CLIENTEDGE, L"COMBOBOX", L"",
@@ -483,24 +525,24 @@ namespace soundstage
         UpdateSurroundLevelLabels();
         for (const wchar_t* pattern : {
                  L"Paired clicks", L"Alternating clicks",
-                 L"Front tone", L"Rear tone"})
+                 L"Front tone", L"Chair tone"})
         {
             ComboBox_AddString(patternCombo_, pattern);
         }
         ComboBox_SetCurSel(
             patternCombo_, static_cast<int>(settings_.lastPattern));
 
+        technicalDetailsButton_ = CreateWindowExW(
+            0, L"BUTTON", L"Technical details",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
+            0, 0, 0, 0, window_, ControlId(TechnicalDetailsButtonId),
+            instance_, nullptr);
         refreshButton_ = CreateWindowExW(0, L"BUTTON", L"Refresh devices",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
             0, 0, 0, 0, window_, ControlId(RefreshButtonId), instance_, nullptr);
         saveButton_ = CreateWindowExW(0, L"BUTTON", L"Save layout",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
             0, 0, 0, 0, window_, ControlId(SaveButtonId), instance_, nullptr);
-        technicalDetailsButton_ = CreateWindowExW(
-            0, L"BUTTON", L"Technical details",
-            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
-            0, 0, 0, 0, window_, ControlId(TechnicalDetailsButtonId),
-            instance_, nullptr);
         startButton_ = CreateWindowExW(
             0, L"BUTTON", L"Start Routing",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
@@ -534,23 +576,27 @@ namespace soundstage
         UpdateModeControls();
     }
 
-    void AppWindow::LayoutControls(const int width, const int height) const
+    void AppWindow::LayoutControls(const int width, const int height)
     {
         const auto layout = ui::ComputeCommandDeckLayout(
             width, height, theme_->Dpi(), technicalDetailsExpanded_);
+        const int maxScroll = std::max(0, layout.virtualHeight - height);
+        scrollOffset_ = std::clamp(scrollOffset_, 0, maxScroll);
+        const int shift = scrollOffset_;
         const auto scale = [this](const int value) {
             return theme_->Scale(value);
         };
-        const auto move = [](const HWND control, const int x, const int y,
-                             const int controlWidth, const int controlHeight) {
-            MoveWindow(control, x, y, std::max(0, controlWidth),
+        const auto move = [shift](const HWND control, const int x, const int y,
+                                  const int controlWidth,
+                                  const int controlHeight) {
+            MoveWindow(control, x, y - shift, std::max(0, controlWidth),
                        std::max(0, controlHeight), TRUE);
         };
 
         if (layout.stacked)
         {
             const int pad = scale(12);
-            const int badgeWidth = scale(160);
+            const int badgeWidth = scale(200);
             const int badgeLeft = layout.header.right - pad - badgeWidth;
             const int titleLeft = layout.header.left + pad;
             move(title_, titleLeft, layout.header.top + scale(2),
@@ -709,8 +755,12 @@ namespace soundstage
         const int actionPad = scale(layout.stacked ? 12 : 16);
         const int buttonGap = scale(layout.stacked ? 8 : 12);
         const int buttonHeight = scale(layout.stacked ? 38 : 44);
-        const int buttonTop = layout.actionBar.top +
-            (layout.actionBar.bottom - layout.actionBar.top - buttonHeight) / 2;
+        // Stacked mode uses two rows: full-width status above the buttons.
+        const int buttonTop = layout.stacked
+            ? layout.actionBar.bottom - actionPad - buttonHeight
+            : layout.actionBar.top +
+                (layout.actionBar.bottom - layout.actionBar.top -
+                 buttonHeight) / 2;
         const int primaryWidth = scale(layout.stacked ? 140 : 170);
         const int saveWidth = scale(layout.stacked ? 88 : 110);
         const int refreshWidth = scale(layout.stacked ? 90 : 136);
@@ -732,11 +782,22 @@ namespace soundstage
         const int detailsLeft = buttonRight - detailsWidth;
         move(technicalDetailsButton_, detailsLeft, buttonTop,
              detailsWidth, buttonHeight);
-        move(status_, layout.actionBar.left + actionPad,
-             layout.actionBar.top + scale(layout.stacked ? 15 : 17),
-             std::max(scale(60), detailsLeft - buttonGap -
-                 static_cast<int>(layout.actionBar.left) - actionPad),
-             scale(layout.stacked ? 44 : 54));
+        if (layout.stacked)
+        {
+            move(status_, layout.actionBar.left + actionPad,
+                 layout.actionBar.top + scale(8),
+                 layout.actionBar.right - layout.actionBar.left -
+                     actionPad * 2,
+                 scale(42));
+        }
+        else
+        {
+            move(status_, layout.actionBar.left + actionPad,
+                 layout.actionBar.top + scale(17),
+                 std::max(scale(60), detailsLeft - buttonGap -
+                     static_cast<int>(layout.actionBar.left) - actionPad),
+                 scale(54));
+        }
         SetWindowTextW(refreshButton_,
                        layout.stacked ? L"Refresh" : L"Refresh devices");
 
@@ -766,6 +827,66 @@ namespace soundstage
             ListView_SetColumnWidth(deviceList_, 2,
                                     detailsWidthPixels * 15 / 100);
         }
+
+        SCROLLINFO scrollInfo{};
+        scrollInfo.cbSize = sizeof(scrollInfo);
+        scrollInfo.fMask = SIF_RANGE | SIF_PAGE | SIF_POS;
+        scrollInfo.nMin = 0;
+        scrollInfo.nMax = layout.virtualHeight - 1;
+        scrollInfo.nPage = static_cast<UINT>(std::max(0, height));
+        scrollInfo.nPos = scrollOffset_;
+        SetScrollInfo(window_, SB_VERT, &scrollInfo, TRUE);
+    }
+
+    void AppWindow::SetScrollOffset(const int offset)
+    {
+        RECT client{};
+        GetClientRect(window_, &client);
+        const auto layout = ui::ComputeCommandDeckLayout(
+            client.right, client.bottom, theme_->Dpi(),
+            technicalDetailsExpanded_);
+        const int maxScroll = std::max(
+            0, layout.virtualHeight - static_cast<int>(client.bottom));
+        const int clamped = std::clamp(offset, 0, maxScroll);
+        if (clamped == scrollOffset_)
+        {
+            return;
+        }
+        scrollOffset_ = clamped;
+        LayoutControls(client.right, client.bottom);
+        InvalidateRect(window_, nullptr, FALSE);
+    }
+
+    void AppWindow::HandleVerticalScroll(const int request)
+    {
+        RECT client{};
+        GetClientRect(window_, &client);
+        const int line = theme_->Scale(48);
+        int target = scrollOffset_;
+        switch (request)
+        {
+        case SB_LINEUP: target -= line; break;
+        case SB_LINEDOWN: target += line; break;
+        case SB_PAGEUP: target -= client.bottom; break;
+        case SB_PAGEDOWN: target += client.bottom; break;
+        case SB_TOP: target = 0; break;
+        case SB_BOTTOM: target = INT_MAX / 2; break;
+        case SB_THUMBTRACK:
+        case SB_THUMBPOSITION:
+        {
+            SCROLLINFO info{};
+            info.cbSize = sizeof(info);
+            info.fMask = SIF_TRACKPOS;
+            if (GetScrollInfo(window_, SB_VERT, &info))
+            {
+                target = info.nTrackPos;
+            }
+            break;
+        }
+        default:
+            return;
+        }
+        SetScrollOffset(target);
     }
 
     void AppWindow::ApplyThemeFonts() const
@@ -806,19 +927,25 @@ namespace soundstage
         const auto layout = ui::ComputeCommandDeckLayout(
             client.right, client.bottom, theme_->Dpi(),
             technicalDetailsExpanded_);
-        theme_->PaintCard(dc, layout.header, theme_->Colors().cardRaised);
-        theme_->PaintCard(dc, layout.frontCard, theme_->Colors().card,
-                          frontCardFault_);
-        theme_->PaintCard(dc, layout.chairCard, theme_->Colors().card,
-                          chairCardFault_);
-        theme_->PaintCard(dc, layout.mixCard, theme_->Colors().card);
+        const auto shifted = [this](RECT bounds) {
+            OffsetRect(&bounds, 0, -scrollOffset_);
+            return bounds;
+        };
+        theme_->PaintCard(dc, shifted(layout.header),
+                          theme_->Colors().cardRaised);
+        theme_->PaintCard(dc, shifted(layout.frontCard),
+                          theme_->Colors().card, frontCardFault_);
+        theme_->PaintCard(dc, shifted(layout.chairCard),
+                          theme_->Colors().card, chairCardFault_);
+        theme_->PaintCard(dc, shifted(layout.mixCard),
+                          theme_->Colors().card);
         if (layout.detailsVisible)
         {
             theme_->PaintCard(
-                dc, layout.detailsCard, theme_->Colors().card);
+                dc, shifted(layout.detailsCard), theme_->Colors().card);
         }
         theme_->PaintCard(
-            dc, layout.actionBar, theme_->Colors().cardRaised);
+            dc, shifted(layout.actionBar), theme_->Colors().cardRaised);
     }
 
     void AppWindow::SetTechnicalDetailsExpanded(const bool expanded)
@@ -837,9 +964,11 @@ namespace soundstage
         {
             RECT client{};
             GetClientRect(window_, &client);
+            const int designHeight = ui::ComputeCommandDeckLayout(
+                client.right, 0, theme_->Dpi(), expanded).virtualHeight;
             const int delta = theme_->Scale(264);
             const int targetHeight = std::max(
-                theme_->Scale(expanded ? 972 : 720),
+                designHeight,
                 static_cast<int>(client.bottom) +
                     (expanded ? delta : -delta));
             RECT target{0, 0, client.right, targetHeight};
@@ -849,11 +978,38 @@ namespace soundstage
                 FALSE,
                 static_cast<DWORD>(GetWindowLongPtrW(window_, GWL_EXSTYLE)),
                 theme_->Dpi());
+            RECT frame{};
+            GetWindowRect(window_, &frame);
+            int outerHeight = target.bottom - target.top;
+            int windowTop = frame.top;
+            MONITORINFO monitorInfo{};
+            monitorInfo.cbSize = sizeof(monitorInfo);
+            if (GetMonitorInfoW(
+                    MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST),
+                    &monitorInfo))
+            {
+                outerHeight = std::min(
+                    outerHeight,
+                    static_cast<int>(monitorInfo.rcWork.bottom -
+                                     monitorInfo.rcWork.top));
+                windowTop = std::min(
+                    windowTop,
+                    static_cast<int>(monitorInfo.rcWork.bottom) -
+                        outerHeight);
+                windowTop = std::max(
+                    windowTop, static_cast<int>(monitorInfo.rcWork.top));
+            }
             SetWindowPos(
-                window_, nullptr, 0, 0,
-                target.right - target.left,
-                target.bottom - target.top,
-                SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER);
+                window_, nullptr, frame.left, windowTop,
+                frame.right - frame.left,
+                outerHeight,
+                SWP_NOACTIVATE | SWP_NOZORDER);
+            // The clamped resize may keep the outer size unchanged, in
+            // which case no WM_SIZE arrives; the shown/hidden details
+            // controls still need fresh positions.
+            RECT resized{};
+            GetClientRect(window_, &resized);
+            LayoutControls(resized.right, resized.bottom);
         }
         else
         {
@@ -1053,7 +1209,7 @@ namespace soundstage
         if (rearSelection < 0 && !settings_.rearEndpointId.empty())
         {
             rearSelection = ComboBox_AddString(
-                rearCombo_, L"Saved Rear output unavailable");
+                rearCombo_, L"Saved Chair output unavailable");
             ComboBox_SetItemData(rearCombo_, rearSelection, -1);
         }
         else if (rearSelection < 0)
@@ -1125,13 +1281,13 @@ namespace soundstage
         const int rear = SelectedEndpointIndex(rearCombo_);
         if (front < 0 || rear < 0)
         {
-            MessageBoxW(window_, L"Select both a front and rear output device.",
+            MessageBoxW(window_, L"Select both a Front and Chair output device.",
                         L"Incomplete layout", MB_OK | MB_ICONWARNING);
             return;
         }
         if (front == rear)
         {
-            MessageBoxW(window_, L"Front and rear must use different Windows output devices.",
+            MessageBoxW(window_, L"Front and Chair must use different Windows output devices.",
                         L"Duplicate output", MB_OK | MB_ICONWARNING);
             return;
         }
@@ -1248,7 +1404,7 @@ namespace soundstage
         {
             MessageBoxW(
                 window_,
-                L"Front and rear must use different Windows output devices.",
+                L"Front and Chair must use different Windows output devices.",
                 L"Duplicate output", MB_OK | MB_ICONWARNING);
             return std::nullopt;
         }
@@ -1348,10 +1504,12 @@ namespace soundstage
             engineStatus.state == audio::PlaybackState::Faulted &&
             engineStatus.lastFault.message.find(L"Virtual endpoint") !=
                 std::wstring::npos;
-        const bool formatChanged = ui::IsCommandDeckFormatChange(
-            virtualCaptureFault, routedVirtualFormat_,
-            detectedVirtualFormat_);
-        const bool unsupportedFormatFault =
+        const bool systemMode = mode == audio::PlaybackMode::SystemAudio;
+        const bool formatChanged = systemMode &&
+            ui::IsCommandDeckFormatChange(
+                virtualCaptureFault, routedVirtualFormat_,
+                detectedVirtualFormat_);
+        const bool unsupportedFormatFault = systemMode &&
             ui::IsCommandDeckUnsupportedFormatFault(
                 virtualCaptureFault, hasSingleVirtualEndpoint_,
                 routedVirtualFormat_,
@@ -1483,6 +1641,14 @@ namespace soundstage
         EnableWindow(sideLevelLabel_, TRUE);
         EnableWindow(sideLevel_, sideEnabled ? TRUE : FALSE);
         EnableWindow(sideLevelValue_, TRUE);
+        if (sideEnabled != sideLevelWasEnabled_)
+        {
+            // The statics derive their dim color from the slider's enabled
+            // state at paint time; EnableWindow repaints only the slider.
+            sideLevelWasEnabled_ = sideEnabled;
+            InvalidateRect(sideLevelLabel_, nullptr, TRUE);
+            InvalidateRect(sideLevelValue_, nullptr, TRUE);
+        }
         EnableWindow(startButton_, ui.startEnabled ? TRUE : FALSE);
         EnableWindow(stopButton_, ui.stopEnabled ? TRUE : FALSE);
 
