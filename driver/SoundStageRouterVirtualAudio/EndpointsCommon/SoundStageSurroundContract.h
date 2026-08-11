@@ -8,6 +8,7 @@ namespace soundstage::driver
     using UInt64 = unsigned long long;
 
     inline constexpr UInt32 ExactDataFormatSize = 104;
+    inline constexpr UInt32 ExactAudioDataRangeSize = 88;
     inline constexpr UInt16 ExtensibleFormatTag = 0xFFFE;
     inline constexpr UInt16 ExactExtensionSize = 22;
     inline constexpr UInt32 ExactSampleRate = 48'000;
@@ -121,6 +122,120 @@ namespace soundstage::driver
         bool waveSubformatPcm;
     };
 
+    struct AudioDataRange
+    {
+        UInt32 dataRangeSize;
+        bool majorFormatAudio;
+        bool dataSubformatPcm;
+        bool waveFormatSpecifier;
+        UInt32 maximumChannels;
+        UInt32 minimumBitsPerSample;
+        UInt32 maximumBitsPerSample;
+        UInt32 minimumSampleFrequency;
+        UInt32 maximumSampleFrequency;
+    };
+
+    enum class DataRangeIntersectionStatus : UInt8
+    {
+        Success,
+        BufferOverflow,
+        BufferTooSmall,
+        NoMatch
+    };
+
+    struct DataRangeIntersectionResult
+    {
+        DataRangeIntersectionStatus status;
+        UInt32 resultantFormatLength;
+        ExactPcmFormat resultantFormat;
+    };
+
+    [[nodiscard]] constexpr bool DataRangeChannelsIntersect(
+        const UInt32 clientChannels,
+        const UInt32 driverChannels) noexcept
+    {
+        return (clientChannels == FivePointOneChannels ||
+                clientChannels == SevenPointOneChannels) &&
+               clientChannels == driverChannels;
+    }
+
+    [[nodiscard]] constexpr DataRangeIntersectionResult
+    IntersectExactSurroundDataRanges(
+        const AudioDataRange& client,
+        const AudioDataRange& miniport,
+        const UInt32 outputBufferLength) noexcept
+    {
+        if (outputBufferLength == 0)
+        {
+            return {
+                DataRangeIntersectionStatus::BufferOverflow,
+                ExactDataFormatSize,
+                {}};
+        }
+        if (outputBufferLength < ExactDataFormatSize)
+        {
+            return {
+                DataRangeIntersectionStatus::BufferTooSmall,
+                0,
+                {}};
+        }
+
+        const auto supportsExactPcmPoint = [](const AudioDataRange& range)
+        {
+            return range.dataRangeSize == ExactAudioDataRangeSize &&
+                   range.majorFormatAudio &&
+                   range.dataSubformatPcm &&
+                   range.waveFormatSpecifier &&
+                   range.minimumBitsPerSample <= ExactBitsPerSample &&
+                   range.maximumBitsPerSample >= ExactBitsPerSample &&
+                   range.minimumBitsPerSample <=
+                       range.maximumBitsPerSample &&
+                   range.minimumSampleFrequency <= ExactSampleRate &&
+                   range.maximumSampleFrequency >= ExactSampleRate &&
+                   range.minimumSampleFrequency <=
+                       range.maximumSampleFrequency;
+        };
+
+        if (!supportsExactPcmPoint(client) ||
+            !supportsExactPcmPoint(miniport) ||
+            !DataRangeChannelsIntersect(
+                client.maximumChannels,
+                miniport.maximumChannels))
+        {
+            return {
+                DataRangeIntersectionStatus::NoMatch,
+                0,
+                {}};
+        }
+
+        const bool fivePointOne =
+            client.maximumChannels == FivePointOneChannels;
+        return {
+            DataRangeIntersectionStatus::Success,
+            ExactDataFormatSize,
+            {
+                ExactDataFormatSize,
+                true,
+                true,
+                true,
+                ExtensibleFormatTag,
+                static_cast<UInt16>(client.maximumChannels),
+                ExactSampleRate,
+                fivePointOne
+                    ? FivePointOneAverageBytesPerSecond
+                    : SevenPointOneAverageBytesPerSecond,
+                fivePointOne
+                    ? FivePointOneBlockAlign
+                    : SevenPointOneBlockAlign,
+                ExactBitsPerSample,
+                ExactExtensionSize,
+                ExactBitsPerSample,
+                fivePointOne
+                    ? FivePointOneChannelMask
+                    : SevenPointOneChannelMask,
+                true}};
+    }
+
     [[nodiscard]] constexpr SurroundLayout IdentifyExactPcmFormat(
         const ExactPcmFormat& value) noexcept
     {
@@ -157,15 +272,6 @@ namespace soundstage::driver
         }
 
         return SurroundLayout::Unsupported;
-    }
-
-    [[nodiscard]] constexpr bool DataRangeChannelsIntersect(
-        const UInt32 clientChannels,
-        const UInt32 driverChannels) noexcept
-    {
-        return (clientChannels == FivePointOneChannels ||
-                clientChannels == SevenPointOneChannels) &&
-               clientChannels == driverChannels;
     }
 
     struct SharedFormatState

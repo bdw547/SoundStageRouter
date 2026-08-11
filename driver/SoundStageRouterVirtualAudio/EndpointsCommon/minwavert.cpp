@@ -229,8 +229,8 @@ Routine Description:
   The DataRangeIntersection function determines the highest quality 
   intersection of two data ranges.
 
-  This sample just validates the # of channels and lets the class handler
-  do the rest.
+  SoundStage Router produces the exact multichannel extensible PCM format
+  shared by its range tables and strict stream validator.
 
 Arguments:
 
@@ -240,9 +240,8 @@ Arguments:
                     range submitted by client in the data range intersection 
                     property request. 
 
-  MyDataRange -         Pin's data range to be compared with client's data 
-                        range. In this case we actually ignore our own data 
-                        range, because we know that we only support one range.
+  MyDataRange -         Pin's data range to be compared with client's data
+                        range.
 
   OutputBufferLength -  Size of the buffer pointed to by the resultant format 
                         parameter. 
@@ -258,59 +257,118 @@ Arguments:
 
     NT status code.
 
-  Remarks:
-
-    This sample driver's custom data intersection handler handles all the
-    audio endpoints defined in this driver. Some endpoints support mono formats
-    while others do not. The handler is written such that it requires an exact
-    match in MaximumChannels. This simplifies the handler but requires the pin
-    data ranges to include a separate data range for mono formats if the pin
-    supports mono formats.
-
 --*/
 {
-    ULONG                   requiredSize;
-
     UNREFERENCED_PARAMETER(PinId);
-    UNREFERENCED_PARAMETER(ResultantFormat);
 
     PAGED_CODE();
 
-    if (!IsEqualGUIDAligned(ClientDataRange->Specifier, KSDATAFORMAT_SPECIFIER_WAVEFORMATEX))
+    static_assert(
+        sizeof(KSDATARANGE_AUDIO) ==
+            soundstage::driver::ExactAudioDataRangeSize);
+    static_assert(
+        sizeof(KSDATAFORMAT_WAVEFORMATEXTENSIBLE) ==
+            soundstage::driver::ExactDataFormatSize);
+
+    if (ClientDataRange == NULL ||
+        MyDataRange == NULL ||
+        ResultantFormatLength == NULL)
     {
-        return STATUS_NOT_IMPLEMENTED;
+        return STATUS_INVALID_PARAMETER;
     }
 
-    requiredSize = sizeof (KSDATAFORMAT_WAVEFORMATEX);
-
-    //
-    // Validate return buffer size, if the request is only for the
-    // size of the resultant structure, return it now before
-    // returning other types of errors.
-    //
-    if (!OutputBufferLength) 
+    *ResultantFormatLength = 0;
+    if (OutputBufferLength != 0 && ResultantFormat == NULL)
     {
-        *ResultantFormatLength = requiredSize;
+        return STATUS_INVALID_PARAMETER;
+    }
+
+    const auto normalizeRange = [](PKSDATARANGE dataRange)
+    {
+        soundstage::driver::AudioDataRange value =
+        {
+            dataRange->FormatSize,
+            !!IsEqualGUIDAligned(
+                dataRange->MajorFormat, KSDATAFORMAT_TYPE_AUDIO),
+            !!IsEqualGUIDAligned(
+                dataRange->SubFormat, KSDATAFORMAT_SUBTYPE_PCM),
+            !!IsEqualGUIDAligned(
+                dataRange->Specifier,
+                KSDATAFORMAT_SPECIFIER_WAVEFORMATEX),
+            0,
+            0,
+            0,
+            0,
+            0
+        };
+
+        if (dataRange->FormatSize == sizeof(KSDATARANGE_AUDIO))
+        {
+            const auto audioRange =
+                reinterpret_cast<PKSDATARANGE_AUDIO>(dataRange);
+            value.maximumChannels = audioRange->MaximumChannels;
+            value.minimumBitsPerSample =
+                audioRange->MinimumBitsPerSample;
+            value.maximumBitsPerSample =
+                audioRange->MaximumBitsPerSample;
+            value.minimumSampleFrequency =
+                audioRange->MinimumSampleFrequency;
+            value.maximumSampleFrequency =
+                audioRange->MaximumSampleFrequency;
+        }
+
+        return value;
+    };
+
+    const auto intersection =
+        soundstage::driver::IntersectExactSurroundDataRanges(
+            normalizeRange(ClientDataRange),
+            normalizeRange(MyDataRange),
+            OutputBufferLength);
+
+    if (intersection.status ==
+        soundstage::driver::DataRangeIntersectionStatus::BufferOverflow)
+    {
+        *ResultantFormatLength = intersection.resultantFormatLength;
         return STATUS_BUFFER_OVERFLOW;
-    } 
-    else if (OutputBufferLength < requiredSize) 
+    }
+    if (intersection.status ==
+        soundstage::driver::DataRangeIntersectionStatus::BufferTooSmall)
     {
         return STATUS_BUFFER_TOO_SMALL;
     }
-
-    // Verify channel count is supported. This routine assumes a separate data
-    // range for each supported channel count.
-    if (!soundstage::driver::DataRangeChannelsIntersect(
-            ((PKSDATARANGE_AUDIO)ClientDataRange)->MaximumChannels,
-            ((PKSDATARANGE_AUDIO)MyDataRange)->MaximumChannels))
+    if (intersection.status ==
+        soundstage::driver::DataRangeIntersectionStatus::NoMatch)
     {
         return STATUS_NO_MATCH;
     }
-    
-    //
-    // Ok, let the class handler do the rest.
-    //
-    return STATUS_NOT_IMPLEMENTED;
+
+    const auto& scalar = intersection.resultantFormat;
+    const auto format =
+        reinterpret_cast<PKSDATAFORMAT_WAVEFORMATEXTENSIBLE>(
+            ResultantFormat);
+    RtlZeroMemory(format, sizeof(*format));
+    format->DataFormat.FormatSize = scalar.dataFormatSize;
+    format->DataFormat.MajorFormat = KSDATAFORMAT_TYPE_AUDIO;
+    format->DataFormat.SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+    format->DataFormat.Specifier = KSDATAFORMAT_SPECIFIER_WAVEFORMATEX;
+    format->WaveFormatExt.Format.wFormatTag = scalar.formatTag;
+    format->WaveFormatExt.Format.nChannels = scalar.channels;
+    format->WaveFormatExt.Format.nSamplesPerSec =
+        scalar.samplesPerSecond;
+    format->WaveFormatExt.Format.nAvgBytesPerSec =
+        scalar.averageBytesPerSecond;
+    format->WaveFormatExt.Format.nBlockAlign = scalar.blockAlign;
+    format->WaveFormatExt.Format.wBitsPerSample =
+        scalar.bitsPerSample;
+    format->WaveFormatExt.Format.cbSize = scalar.extensionSize;
+    format->WaveFormatExt.Samples.wValidBitsPerSample =
+        scalar.validBitsPerSample;
+    format->WaveFormatExt.dwChannelMask = scalar.channelMask;
+    format->WaveFormatExt.SubFormat = KSDATAFORMAT_SUBTYPE_PCM;
+
+    *ResultantFormatLength = intersection.resultantFormatLength;
+    return STATUS_SUCCESS;
 } // DataRangeIntersection
 
 //=============================================================================
