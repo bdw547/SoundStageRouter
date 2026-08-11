@@ -37,6 +37,11 @@ namespace soundstage::audio
     [[nodiscard]] bool IsVirtualCaptureFormat(
         const CaptureFormat& format) noexcept;
 
+    [[nodiscard]] SurroundFrame DecodeVirtualSurroundFrame(
+        VirtualSurroundFormat format,
+        std::span<const float> samples,
+        float gain) noexcept;
+
     struct CapturePacket
     {
         std::span<const float> samples;

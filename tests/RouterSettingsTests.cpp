@@ -144,3 +144,34 @@ TEST(RouterSettings_InvalidSurroundLevelsFallBackAndMarkAdjustment)
     }
     std::filesystem::remove(path);
 }
+
+TEST(RouterSettings_LegacyPhysicalLevelsKeepSignedParseAndClampMigration)
+{
+    const std::wstring path = std::filesystem::absolute(
+        L"routing-legacy-physical-level-test.ini").wstring();
+    WriteRoutingFile(
+        path,
+        L"[Routing]\n"
+        L"FrontDelayMs=0\nRearDelayMs=0\n"
+        L"FrontLevelPercent=+50\nRearLevelPercent=101\n"
+        L"BackLevelPercent=100\nSideLevelPercent=100\n"
+        L"TestPattern=PairedClicks\nMode=SystemAudio\nRearFill=Off\n");
+
+    RouterSettings actual = soundstage::RouterSettingsStore(path).Load();
+    EXPECT_EQ(actual.frontLevelPercent, 50);
+    EXPECT_EQ(actual.rearLevelPercent, 100);
+    EXPECT_TRUE(!actual.loadAdjustedValues);
+
+    WriteRoutingFile(
+        path,
+        L"[Routing]\n"
+        L"FrontDelayMs=0\nRearDelayMs=0\n"
+        L"FrontLevelPercent=2000\nRearLevelPercent=100\n"
+        L"BackLevelPercent=100\nSideLevelPercent=100\n"
+        L"TestPattern=PairedClicks\nMode=SystemAudio\nRearFill=Off\n");
+
+    actual = soundstage::RouterSettingsStore(path).Load();
+    EXPECT_EQ(actual.frontLevelPercent, 100);
+    EXPECT_TRUE(!actual.loadAdjustedValues);
+    std::filesystem::remove(path);
+}

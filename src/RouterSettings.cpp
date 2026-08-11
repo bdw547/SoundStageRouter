@@ -179,9 +179,11 @@ namespace soundstage
             ReadString(path_, L"FrontDelayMs", L"0"));
         const std::optional<int> rearDelay = ParseDelay(
             ReadString(path_, L"RearDelayMs", L"0"));
-        const std::optional<int> frontLevel = ParsePercent(
+        // Front/Rear keys predate the surround controls. Preserve their
+        // historical signed decimal parse and clamp-on-load migration.
+        const std::optional<int> frontLevel = ParseDelay(
             ReadString(path_, L"FrontLevelPercent", L"100"));
-        const std::optional<int> rearLevel = ParsePercent(
+        const std::optional<int> rearLevel = ParseDelay(
             ReadString(path_, L"RearLevelPercent", L"100"));
         const std::optional<int> backLevel = ParsePercent(
             ReadString(path_, L"BackLevelPercent", L"100"));

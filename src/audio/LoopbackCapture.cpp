@@ -100,6 +100,34 @@ namespace soundstage::audio
             VirtualSurroundFormat::Unsupported;
     }
 
+    SurroundFrame DecodeVirtualSurroundFrame(
+        const VirtualSurroundFormat format,
+        const std::span<const float> samples,
+        const float gain) noexcept
+    {
+        const std::size_t requiredChannels =
+            format == VirtualSurroundFormat::SevenPointOne ? 8u :
+            format == VirtualSurroundFormat::FivePointOne ? 6u : 0u;
+        if (requiredChannels == 0 || samples.size() < requiredChannels)
+        {
+            return {};
+        }
+
+        SurroundFrame decoded{
+            samples[0] * gain,
+            samples[1] * gain,
+            samples[2] * gain,
+            samples[3] * gain,
+            samples[4] * gain,
+            samples[5] * gain};
+        if (format == VirtualSurroundFormat::SevenPointOne)
+        {
+            decoded.sideLeft = samples[6] * gain;
+            decoded.sideRight = samples[7] * gain;
+        }
+        return decoded;
+    }
+
     struct WindowsLoopbackCaptureBackend::Impl
     {
         ComPtr<IMMDeviceEnumerator> enumerator;
@@ -469,25 +497,14 @@ namespace soundstage::audio
                             SurroundFrame input{};
                             if (!packet.silent)
                             {
-                                const float* sample =
-                                    packet.samples.data() +
+                                const std::size_t offset =
                                     static_cast<std::size_t>(frame) *
-                                        captureFormat.channels;
-                                input = {
-                                    sample[0] * packet.masterGain,
-                                    sample[1] * packet.masterGain,
-                                    sample[2] * packet.masterGain,
-                                    sample[3] * packet.masterGain,
-                                    sample[4] * packet.masterGain,
-                                    sample[5] * packet.masterGain};
-                                if (detectedFormat ==
-                                    VirtualSurroundFormat::SevenPointOne)
-                                {
-                                    input.sideLeft =
-                                        sample[6] * packet.masterGain;
-                                    input.sideRight =
-                                        sample[7] * packet.masterGain;
-                                }
+                                    captureFormat.channels;
+                                input = DecodeVirtualSurroundFrame(
+                                    detectedFormat,
+                                    packet.samples.subspan(
+                                        offset, captureFormat.channels),
+                                    packet.masterGain);
                             }
                             const SurroundMixLevels mixLevels{
                                 backGain.load(std::memory_order_acquire),

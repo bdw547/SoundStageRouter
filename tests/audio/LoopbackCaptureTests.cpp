@@ -87,6 +87,56 @@ TEST(LoopbackCapture_ValidatesExactVirtualFormat)
     EXPECT_TRUE(!IsVirtualCaptureFormat({48000, 6, 32, 24, 0x3F, false}));
     EXPECT_TRUE(!IsVirtualCaptureFormat(
         {48000, 8, 32, 32, 0x003F, true}));
+
+    EXPECT_TRUE(!IsVirtualCaptureFormat(
+        {48000, 8, 24, 32, 0x063F, true}));
+    EXPECT_TRUE(!IsVirtualCaptureFormat(
+        {48000, 8, 32, 24, 0x063F, true}));
+    EXPECT_TRUE(!IsVirtualCaptureFormat(
+        {48000, 6, 32, 24, 0x063F, true}));
+    EXPECT_TRUE(!IsVirtualCaptureFormat(
+        {44100, 8, 32, 32, 0x063F, true}));
+    EXPECT_TRUE(!IsVirtualCaptureFormat(
+        {48000, 8, 32, 32, 0x063F, false}));
+}
+
+TEST(LoopbackCapture_DecoderPreservesEverySevenPointOneChannelInOrder)
+{
+    for (std::size_t channel = 0; channel < 8; ++channel)
+    {
+        std::array<float, 8> samples{};
+        samples[channel] = 0.5f;
+        const SurroundFrame decoded = DecodeVirtualSurroundFrame(
+            VirtualSurroundFormat::SevenPointOne, samples, 0.5f);
+        const std::array<float, 8> actual{
+            decoded.frontLeft, decoded.frontRight,
+            decoded.frontCenter, decoded.lfe,
+            decoded.backLeft, decoded.backRight,
+            decoded.sideLeft, decoded.sideRight};
+
+        for (std::size_t output = 0; output < actual.size(); ++output)
+        {
+            EXPECT_NEAR(actual[output], output == channel ? 0.25 : 0.0,
+                        1e-7);
+        }
+    }
+}
+
+TEST(LoopbackCapture_DecoderLeavesSideSilentForFivePointOne)
+{
+    const std::array<float, 8> samples{
+        1, 2, 3, 4, 5, 6, 100, 200};
+    const SurroundFrame decoded = DecodeVirtualSurroundFrame(
+        VirtualSurroundFormat::FivePointOne, samples, 1.0f);
+
+    EXPECT_NEAR(decoded.frontLeft, 1.0, 1e-7);
+    EXPECT_NEAR(decoded.frontRight, 2.0, 1e-7);
+    EXPECT_NEAR(decoded.frontCenter, 3.0, 1e-7);
+    EXPECT_NEAR(decoded.lfe, 4.0, 1e-7);
+    EXPECT_NEAR(decoded.backLeft, 5.0, 1e-7);
+    EXPECT_NEAR(decoded.backRight, 6.0, 1e-7);
+    EXPECT_NEAR(decoded.sideLeft, 0.0, 1e-7);
+    EXPECT_NEAR(decoded.sideRight, 0.0, 1e-7);
 }
 
 TEST(LoopbackCapture_DecodesSevenPointOneAndPublishesLiveLevels)
