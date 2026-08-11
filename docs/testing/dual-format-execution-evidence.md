@@ -381,3 +381,100 @@ and no hardware playback or hardware acceptance was performed.
 - Task 3 retained a compiler-failure summary rather than raw diagnostic lines.
 - Documentation-only review follow-ups did not rerun heavy builds; they rely on
   the Task 7 results recorded above.
+
+## Final-review fix wave — 2026-08-10
+
+Reviewed base: `73c8407`.
+
+### Focused behavioral and source contracts
+
+Commands actually run:
+
+```powershell
+& 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.Tests.vcxproj -t:Build -p:Configuration=Debug -p:Platform=x64 -nologo -verbosity:minimal
+.\build\tests\Debug\SoundStageRouter.Tests.exe
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\tests\driver\DriverSynchronizationSource.Tests.ps1'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\tests\driver\DriverInstallPlan.Tests.ps1'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\tests\driver\DriverSigningSource.Tests.ps1'
+```
+
+Observed final results:
+
+```text
+123/123 passed
+DriverSynchronizationSource.Tests.ps1: PASS
+DriverInstallPlan.Tests.ps1: PASS
+DriverSigningSource.Tests.ps1: PASS
+Install-SoundStageRouterDriver.ps1 parse: PASS (0 errors)
+```
+
+No install or uninstall script was executed. The installer checks exercised
+only its pure plan module and parsed the entry script without invoking it.
+
+### Clean Debug and Release application verification
+
+Commands actually run:
+
+```powershell
+& 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.sln -t:Rebuild -p:Configuration=Debug -p:Platform=x64 -nologo -verbosity:minimal
+.\build\tests\Debug\SoundStageRouter.Tests.exe
+& 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.sln -t:Rebuild -p:Configuration=Release -p:Platform=x64 -nologo -verbosity:minimal
+.\build\tests\Release\SoundStageRouter.Tests.exe
+```
+
+Both rebuilds returned exit code 0 and emitted no warning or error diagnostic.
+Both native test executables returned exit code 0 with `123/123 passed`.
+
+### Release driver build, INF, and explicit signatures
+
+Commands actually run:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File '.\driver\SoundStageRouterVirtualAudio\scripts\Build-Driver.ps1' -Configuration Release -Platform x64
+& 'C:\Program Files (x86)\Windows Kits\10\Tools\10.0.28000.0\x64\infverif.exe' /w /v $taskInf
+& 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe' verify /pa /all /v $taskStandaloneSys
+& 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe' verify /pa /all /v $taskPackageSys
+& 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe' verify /pa /all /v $taskCat
+& 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe' verify /pa /v /c $taskCat $taskPackageSys
+& 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.28000.0\x64\signtool.exe' verify /pa /v /c $taskCat $taskInf
+```
+
+Relevant final output:
+
+```text
+Signability test complete.
+Errors:
+None
+Warnings:
+None
+Catalog generation complete.
+INF is VALID
+INFVERIF_EXIT=0
+STANDALONE_SYS_VERIFY_EXIT=0
+PACKAGE_SYS_VERIFY_EXIT=0
+CAT_VERIFY_EXIT=0
+CATALOG_SYS_MEMBER_VERIFY_EXIT=0
+CATALOG_INF_MEMBER_VERIFY_EXIT=0
+```
+
+Each final SignTool check reported one file/signature successfully verified,
+zero warnings, and zero errors. The two SYS files had SHA-256 hash
+`734C024B03147D628E02FFD2694E20CD5C2CCA64F1B586146888AC86F5721780`.
+
+An earlier explicit verification run was a genuine RED: the old signing
+script appended the SoundStage test signature behind the WDK's automatically
+generated, locally untrusted primary signature. SignTool reported an untrusted
+root and nonzero exits for `/all` and catalog-member verification. Replacing
+the primary signature in the build script, rebuilding, and rerunning the same
+matrix produced the final zero-exit results above. No certificate was imported
+and no machine trust setting was changed during this fix wave.
+
+### Unverified boundaries
+
+- The driver was not installed or uninstalled.
+- No live KS or WASAPI format switch, proposed-format property call, loopback
+  capture, endpoint-count check, or AudioSrv stream-lifecycle trace was run.
+- No physical speaker playback, acoustic alignment, or hardware acceptance
+  was run.
+- The package uses an untimestamped local development test certificate; this
+  is not production or Microsoft attestation signing.
