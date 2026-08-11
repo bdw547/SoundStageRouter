@@ -31,6 +31,10 @@ namespace soundstage
         void RefreshDevices();
         void PopulateControls();
         void UpdateModeControls() const;
+        void UpdateSurroundControlAvailability(
+            audio::VirtualSurroundFormat format) const;
+        void UpdateSurroundLevelLabels() const;
+        void SaveSurroundLevels();
         void SaveSettings();
         void StartTest();
         [[nodiscard]] std::optional<audio::RunConfiguration>
@@ -42,6 +46,7 @@ namespace soundstage
         int SelectedEndpointIndex(HWND combo) const;
         int ReadDelay(HWND edit) const;
         int ReadLevel(HWND edit) const;
+        int ReadSurroundLevel(HWND trackbar) const;
         void ApplyFont(HWND control, HFONT font) const;
 
         HINSTANCE instance_ = nullptr;
@@ -61,6 +66,12 @@ namespace soundstage
         HWND rearDelay_ = nullptr;
         HWND rearLevelLabel_ = nullptr;
         HWND rearLevel_ = nullptr;
+        HWND backLevelLabel_ = nullptr;
+        HWND backLevel_ = nullptr;
+        HWND backLevelValue_ = nullptr;
+        HWND sideLevelLabel_ = nullptr;
+        HWND sideLevel_ = nullptr;
+        HWND sideLevelValue_ = nullptr;
         HWND patternLabel_ = nullptr;
         HWND patternCombo_ = nullptr;
         HWND modeLabel_ = nullptr;
@@ -68,6 +79,7 @@ namespace soundstage
         HWND rearFillLabel_ = nullptr;
         HWND rearFillCombo_ = nullptr;
         HWND virtualStatus_ = nullptr;
+        HWND formatStatus_ = nullptr;
         HWND refreshButton_ = nullptr;
         HWND saveButton_ = nullptr;
         HWND startButton_ = nullptr;

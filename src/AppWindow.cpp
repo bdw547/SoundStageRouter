@@ -1,4 +1,5 @@
 #include "AppWindow.h"
+#include "audio/VirtualSurroundContract.h"
 #include "audio/WasapiEndpointSession.h"
 
 #include <commctrl.h>
@@ -28,6 +29,8 @@ namespace
     constexpr int RearFillComboId = 1012;
     constexpr int FrontLevelId = 1013;
     constexpr int RearLevelId = 1014;
+    constexpr int BackLevelId = 1015;
+    constexpr int SideLevelId = 1016;
     constexpr UINT_PTR StatusTimerId = 1;
     constexpr UINT StatusTimerPeriodMs = 250;
 
@@ -197,6 +200,14 @@ namespace soundstage
                 break;
             }
             break;
+        case WM_HSCROLL:
+            if (reinterpret_cast<HWND>(lParam) == backLevel_ ||
+                reinterpret_cast<HWND>(lParam) == sideLevel_)
+            {
+                SaveSurroundLevels();
+                return 0;
+            }
+            break;
         case WM_TIMER:
             if (wParam == StatusTimerId && coordinator_)
             {
@@ -286,7 +297,7 @@ namespace soundstage
             WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
             0, 0, 0, 0, window_, ControlId(ModeComboId),
             instance_, nullptr);
-        ComboBox_AddString(modeCombo_, L"System audio (virtual 5.1)");
+        ComboBox_AddString(modeCombo_, L"System audio (virtual surround)");
         ComboBox_AddString(modeCombo_, L"Test signals");
         ComboBox_SetCurSel(
             modeCombo_,
@@ -305,7 +316,35 @@ namespace soundstage
         virtualStatus_ = CreateLabel(
             window_,
             L"Driver status: checking. Set Windows default output to "
-            L"SoundStage Router 5.1.");
+            L"SoundStage Router Surround.");
+        formatStatus_ = CreateLabel(
+            window_, L"Surround format unavailable", SS_CENTER);
+
+        backLevelLabel_ = CreateLabel(window_, L"Back Level");
+        backLevel_ = CreateWindowExW(
+            0, TRACKBAR_CLASSW, L"",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_AUTOTICKS,
+            0, 0, 0, 0, window_, ControlId(BackLevelId),
+            instance_, nullptr);
+        backLevelValue_ = CreateLabel(window_, L"100%", SS_RIGHT);
+        sideLevelLabel_ = CreateLabel(window_, L"Side Level");
+        sideLevel_ = CreateWindowExW(
+            0, TRACKBAR_CLASSW, L"",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_AUTOTICKS,
+            0, 0, 0, 0, window_, ControlId(SideLevelId),
+            instance_, nullptr);
+        sideLevelValue_ = CreateLabel(window_, L"100%", SS_RIGHT);
+        for (const HWND trackbar : {backLevel_, sideLevel_})
+        {
+            SendMessageW(trackbar, TBM_SETRANGE, TRUE, MAKELONG(0, 100));
+            SendMessageW(trackbar, TBM_SETTICFREQ, 10, 0);
+            SendMessageW(trackbar, TBM_SETPAGESIZE, 0, 10);
+        }
+        SendMessageW(backLevel_, TBM_SETPOS, TRUE,
+                     settings_.backLevelPercent);
+        SendMessageW(sideLevel_, TBM_SETPOS, TRUE,
+                     settings_.sideLevelPercent);
+        UpdateSurroundLevelLabels();
         for (const wchar_t* pattern : {
                  L"Paired clicks", L"Alternating clicks",
                  L"Front tone", L"Rear tone"})
@@ -344,8 +383,10 @@ namespace soundstage
                  frontLevelLabel_, frontLevel_,
                  rearLabel_, rearCombo_, rearDelayLabel_, rearDelay_,
                  rearLevelLabel_, rearLevel_,
+                 backLevelLabel_, backLevel_, backLevelValue_,
+                 sideLevelLabel_, sideLevel_, sideLevelValue_,
                  modeLabel_, modeCombo_, rearFillLabel_, rearFillCombo_,
-                 virtualStatus_,
+                 virtualStatus_, formatStatus_,
                  patternLabel_, patternCombo_, refreshButton_, saveButton_,
                  startButton_, stopButton_, frontStatus_, rearStatus_,
                  syncStatus_, status_})
@@ -359,6 +400,7 @@ namespace soundstage
         ApplyFont(rearStatus_, smallFont_);
         ApplyFont(syncStatus_, smallFont_);
         ApplyFont(virtualStatus_, smallFont_);
+        ApplyFont(formatStatus_, smallFont_);
         UpdateModeControls();
     }
 
@@ -368,10 +410,12 @@ namespace soundstage
         const int contentWidth = std::max(300, width - margin * 2);
         MoveWindow(title_, margin, 22, contentWidth, 36, TRUE);
         MoveWindow(subtitle_, margin, 59, contentWidth, 24, TRUE);
+        MoveWindow(formatStatus_, margin + contentWidth - 200, 24,
+                   200, 24, TRUE);
         MoveWindow(deviceList_, margin, 94, contentWidth,
-                   std::max(120, height - 590), TRUE);
+                   std::max(120, height - 650), TRUE);
 
-        const int formTop = std::max(230, height - 480);
+        const int formTop = std::max(230, height - 540);
         const int delayWidth = 100;
         const int levelWidth = 100;
         const int gap = 16;
@@ -409,16 +453,33 @@ namespace soundstage
         MoveWindow(rearLevel_,
                    margin + comboWidth + delayWidth + gap * 2,
                    routesTop + 87, levelWidth, 30, TRUE);
-        MoveWindow(patternLabel_, margin, routesTop + 126, 240, 23, TRUE);
-        MoveWindow(patternCombo_, margin, routesTop + 151, 260, 180, TRUE);
-        MoveWindow(refreshButton_, margin, routesTop + 198, 150, 36, TRUE);
-        MoveWindow(saveButton_, margin + 162, routesTop + 198, 140, 36, TRUE);
-        MoveWindow(startButton_, margin + 314, routesTop + 198, 140, 36, TRUE);
-        MoveWindow(stopButton_, margin + 466, routesTop + 198, 130, 36, TRUE);
-        MoveWindow(frontStatus_, margin, routesTop + 246, contentWidth, 22, TRUE);
-        MoveWindow(rearStatus_, margin, routesTop + 270, contentWidth, 22, TRUE);
-        MoveWindow(syncStatus_, margin, routesTop + 294, contentWidth, 22, TRUE);
-        MoveWindow(status_, margin, routesTop + 322, contentWidth, 25, TRUE);
+
+        const int mixTop = routesTop + 126;
+        const int mixGap = 28;
+        const int mixWidth = (contentWidth - mixGap) / 2;
+        const int valueWidth = 55;
+        MoveWindow(backLevelLabel_, margin, mixTop, mixWidth - valueWidth,
+                   23, TRUE);
+        MoveWindow(backLevelValue_, margin + mixWidth - valueWidth, mixTop,
+                   valueWidth, 23, TRUE);
+        MoveWindow(backLevel_, margin, mixTop + 22, mixWidth, 36, TRUE);
+        MoveWindow(sideLevelLabel_, margin + mixWidth + mixGap, mixTop,
+                   mixWidth - valueWidth, 23, TRUE);
+        MoveWindow(sideLevelValue_, margin + contentWidth - valueWidth,
+                   mixTop, valueWidth, 23, TRUE);
+        MoveWindow(sideLevel_, margin + mixWidth + mixGap, mixTop + 22,
+                   mixWidth, 36, TRUE);
+
+        MoveWindow(patternLabel_, margin, routesTop + 192, 240, 23, TRUE);
+        MoveWindow(patternCombo_, margin, routesTop + 217, 260, 180, TRUE);
+        MoveWindow(refreshButton_, margin, routesTop + 264, 150, 36, TRUE);
+        MoveWindow(saveButton_, margin + 162, routesTop + 264, 140, 36, TRUE);
+        MoveWindow(startButton_, margin + 314, routesTop + 264, 140, 36, TRUE);
+        MoveWindow(stopButton_, margin + 466, routesTop + 264, 130, 36, TRUE);
+        MoveWindow(frontStatus_, margin, routesTop + 312, contentWidth, 22, TRUE);
+        MoveWindow(rearStatus_, margin, routesTop + 336, contentWidth, 22, TRUE);
+        MoveWindow(syncStatus_, margin, routesTop + 360, contentWidth, 22, TRUE);
+        MoveWindow(status_, margin, routesTop + 388, contentWidth, 25, TRUE);
     }
 
     void AppWindow::RefreshDevices()
@@ -460,7 +521,8 @@ namespace soundstage
                 SetWindowTextW(
                     virtualStatus_,
                     L"Driver status: missing. Install the virtual driver, "
-                    L"then set Windows default output to SoundStage Router 5.1.");
+                    L"then set Windows default output to "
+                    L"SoundStage Router Surround.");
             }
             else if (virtualCount > 1)
             {
@@ -473,15 +535,15 @@ namespace soundstage
             {
                 SetWindowTextW(
                     virtualStatus_,
-                    L"Driver status: wrong virtual format; expected "
-                    L"48 kHz float32 6-channel FL/FR/FC/LFE/BL/BR.");
+                    L"Driver status: wrong virtual format; expected 5.1 or "
+                    L"7.1 at 48 kHz float32.");
             }
             else
             {
                 SetWindowTextW(
                     virtualStatus_,
                     L"Driver status: ready. Windows default output must be "
-                    L"SoundStage Router 5.1; keep this app running.");
+                    L"SoundStage Router Surround; keep this app running.");
             }
             SetStatus(status);
         }
@@ -587,6 +649,44 @@ namespace soundstage
         SetWindowTextW(
             rearLevel_,
             std::to_wstring(settings_.rearLevelPercent).c_str());
+        SendMessageW(backLevel_, TBM_SETPOS, TRUE,
+                     settings_.backLevelPercent);
+        SendMessageW(sideLevel_, TBM_SETPOS, TRUE,
+                     settings_.sideLevelPercent);
+        UpdateSurroundLevelLabels();
+    }
+
+    void AppWindow::UpdateSurroundLevelLabels() const
+    {
+        const std::wstring back =
+            std::to_wstring(ReadSurroundLevel(backLevel_)) + L"%";
+        const std::wstring side =
+            std::to_wstring(ReadSurroundLevel(sideLevel_)) + L"%";
+        SetWindowTextW(backLevelValue_, back.c_str());
+        SetWindowTextW(sideLevelValue_, side.c_str());
+    }
+
+    void AppWindow::SaveSurroundLevels()
+    {
+        settings_.backLevelPercent = ReadSurroundLevel(backLevel_);
+        settings_.sideLevelPercent = ReadSurroundLevel(sideLevel_);
+        UpdateSurroundLevelLabels();
+
+        try
+        {
+            settingsStore_.Save(settings_);
+        }
+        catch (const std::exception&)
+        {
+            SetStatus(L"Unable to save surround mix levels.");
+        }
+
+        if (coordinator_)
+        {
+            coordinator_->PostSurroundMixLevels({
+                static_cast<float>(settings_.backLevelPercent) / 100.0f,
+                static_cast<float>(settings_.sideLevelPercent) / 100.0f});
+        }
     }
 
     void AppWindow::SaveSettings()
@@ -612,6 +712,8 @@ namespace soundstage
         settings_.rearDelayMs = ReadDelay(rearDelay_);
         settings_.frontLevelPercent = ReadLevel(frontLevel_);
         settings_.rearLevelPercent = ReadLevel(rearLevel_);
+        settings_.backLevelPercent = ReadSurroundLevel(backLevel_);
+        settings_.sideLevelPercent = ReadSurroundLevel(sideLevel_);
         const int pattern = ComboBox_GetCurSel(patternCombo_);
         settings_.lastPattern = pattern >= 0 && pattern <= 3
             ? static_cast<audio::TestPattern>(pattern)
@@ -656,6 +758,10 @@ namespace soundstage
             configuration->routes[0].gain * 100.0f);
         settings_.rearLevelPercent = static_cast<int>(
             configuration->routes[1].gain * 100.0f);
+        settings_.backLevelPercent = static_cast<int>(
+            configuration->surroundMix.back * 100.0f);
+        settings_.sideLevelPercent = static_cast<int>(
+            configuration->surroundMix.side * 100.0f);
         settings_.lastPattern = configuration->pattern;
         settings_.mode = configuration->mode;
         settings_.rearFill = configuration->rearFill;
@@ -739,8 +845,8 @@ namespace soundstage
             {
                 MessageBoxW(
                     window_,
-                    L"SoundStage Router 5.1 is missing, duplicated, or has "
-                    L"the wrong 6-channel 48 kHz float format.",
+                    L"SoundStage Router Surround is missing, duplicated, or "
+                    L"is not set to 5.1 or 7.1 at 48 kHz float32.",
                     L"Virtual driver unavailable",
                     MB_OK | MB_ICONWARNING);
                 return std::nullopt;
@@ -753,6 +859,9 @@ namespace soundstage
             : audio::TestPattern::PairedClicks;
         configuration.clockReferenceRole =
             audio::SpeakerRole::Rear;
+        configuration.surroundMix = {
+            static_cast<float>(ReadSurroundLevel(backLevel_)) / 100.0f,
+            static_cast<float>(ReadSurroundLevel(sideLevel_)) / 100.0f};
         configuration.routes = {
             {audio::SpeakerRole::Front,
              endpoints_[frontIndex].id,
@@ -771,6 +880,20 @@ namespace soundstage
     void AppWindow::RenderEngineStatus(
         const audio::EngineStatus& engineStatus) const
     {
+        const wchar_t* formatText = L"Surround format unavailable";
+        if (engineStatus.surroundFormat ==
+            audio::VirtualSurroundFormat::FivePointOne)
+        {
+            formatText = L"5.1 detected";
+        }
+        else if (engineStatus.surroundFormat ==
+                 audio::VirtualSurroundFormat::SevenPointOne)
+        {
+            formatText = L"7.1 detected";
+        }
+        SetWindowTextW(formatStatus_, formatText);
+        UpdateSurroundControlAvailability(engineStatus.surroundFormat);
+
         const auto endpointText = [](const wchar_t* name,
                                      const audio::EndpointTelemetry& endpoint,
                                      const bool reference)
@@ -835,6 +958,25 @@ namespace soundstage
         ShowWindow(virtualStatus_, system ? SW_SHOW : SW_HIDE);
         SetWindowTextW(
             startButton_, system ? L"Start Routing" : L"Start Test");
+        const auto engineStatus = coordinator_ ? coordinator_->Status() : nullptr;
+        UpdateSurroundControlAvailability(
+            engineStatus ? engineStatus->surroundFormat
+                         : audio::VirtualSurroundFormat::Unsupported);
+    }
+
+    void AppWindow::UpdateSurroundControlAvailability(
+        const audio::VirtualSurroundFormat format) const
+    {
+        const bool system = ComboBox_GetCurSel(modeCombo_) != 1;
+        const BOOL sideAvailable =
+            (!system || format != audio::VirtualSurroundFormat::FivePointOne)
+                ? TRUE : FALSE;
+        EnableWindow(backLevelLabel_, TRUE);
+        EnableWindow(backLevel_, TRUE);
+        EnableWindow(backLevelValue_, TRUE);
+        EnableWindow(sideLevelLabel_, sideAvailable);
+        EnableWindow(sideLevel_, sideAvailable);
+        EnableWindow(sideLevelValue_, sideAvailable);
     }
 
     void AppWindow::SetPlaybackControlsEnabled(
@@ -851,6 +993,10 @@ namespace soundstage
         EnableWindow(saveButton_, selectable);
         EnableWindow(startButton_, selectable);
         EnableWindow(stopButton_, !selectable);
+        const auto engineStatus = coordinator_ ? coordinator_->Status() : nullptr;
+        UpdateSurroundControlAvailability(
+            engineStatus ? engineStatus->surroundFormat
+                         : audio::VirtualSurroundFormat::Unsupported);
     }
 
     void AppWindow::SetStatus(const std::wstring& text) const
@@ -895,6 +1041,13 @@ namespace soundstage
         return valid == FALSE
             ? 100
             : audio::ClampLevelPercent(static_cast<int>(value));
+    }
+
+    int AppWindow::ReadSurroundLevel(const HWND trackbar) const
+    {
+        if (trackbar == nullptr) return 100;
+        return audio::ClampLevelPercent(static_cast<int>(
+            SendMessageW(trackbar, TBM_GETPOS, 0, 0)));
     }
 
     void AppWindow::ApplyFont(const HWND control, const HFONT font) const
