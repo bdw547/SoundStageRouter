@@ -49,6 +49,27 @@ namespace
                                parent, nullptr, GetModuleHandleW(nullptr), nullptr);
     }
 
+    // WM_SETTEXT repaints a control even when the text is identical; the
+    // 250 ms status timer must not repaint anything that did not change.
+    bool SetTextIfChanged(const HWND control, const std::wstring& text)
+    {
+        const int length = GetWindowTextLengthW(control);
+        std::wstring current;
+        if (length > 0)
+        {
+            current.resize(static_cast<std::size_t>(length) + 1);
+            const int copied = GetWindowTextW(
+                control, current.data(), static_cast<int>(current.size()));
+            current.resize(static_cast<std::size_t>(std::max(copied, 0)));
+        }
+        if (current == text)
+        {
+            return false;
+        }
+        SetWindowTextW(control, text.c_str());
+        return true;
+    }
+
     void InsertColumn(HWND list, int index, int width, const wchar_t* title)
     {
         LVCOLUMNW column{};
@@ -320,7 +341,8 @@ namespace soundstage
             }
             break;
         case WM_ERASEBKGND:
-            PaintWindow(reinterpret_cast<HDC>(wParam));
+            // WM_PAINT covers the full invalid region from a memory
+            // surface; erasing here would just flash the background.
             return 1;
         case WM_PAINT:
         {
@@ -586,11 +608,25 @@ namespace soundstage
         const auto scale = [this](const int value) {
             return theme_->Scale(value);
         };
-        const auto move = [shift](const HWND control, const int x, const int y,
-                                  const int controlWidth,
-                                  const int controlHeight) {
-            MoveWindow(control, x, y - shift, std::max(0, controlWidth),
-                       std::max(0, controlHeight), TRUE);
+        // One atomic reposition pass keeps resize and scroll repaints from
+        // landing control-by-control.
+        HDWP positions = BeginDeferWindowPos(44);
+        const auto move = [&positions, shift](
+                              const HWND control, const int x, const int y,
+                              const int controlWidth,
+                              const int controlHeight) {
+            const int width = std::max(0, controlWidth);
+            const int height = std::max(0, controlHeight);
+            if (positions != nullptr)
+            {
+                positions = DeferWindowPos(
+                    positions, control, nullptr, x, y - shift, width, height,
+                    SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            if (positions == nullptr)
+            {
+                MoveWindow(control, x, y - shift, width, height, TRUE);
+            }
         };
 
         if (layout.stacked)
@@ -798,8 +834,8 @@ namespace soundstage
                      static_cast<int>(layout.actionBar.left) - actionPad),
                  scale(54));
         }
-        SetWindowTextW(refreshButton_,
-                       layout.stacked ? L"Refresh" : L"Refresh devices");
+        SetTextIfChanged(refreshButton_,
+                         layout.stacked ? L"Refresh" : L"Refresh devices");
 
         const int detailsPad = scale(16);
         const int detailsWidthPixels = layout.detailsCard.right -
@@ -819,6 +855,10 @@ namespace soundstage
         move(syncStatus_, layout.detailsCard.left + detailsPad,
              layout.detailsCard.top + scale(195),
              detailsWidthPixels, scale(32));
+        if (positions != nullptr)
+        {
+            EndDeferWindowPos(positions);
+        }
         if (detailsWidthPixels > 0)
         {
             ListView_SetColumnWidth(deviceList_, 0, detailsWidthPixels / 2);
@@ -923,7 +963,23 @@ namespace soundstage
     {
         RECT client{};
         GetClientRect(window_, &client);
-        theme_->EraseBackground(dc, client);
+        if (client.right <= 0 || client.bottom <= 0)
+        {
+            return;
+        }
+
+        // Compose off-screen so a repaint never shows the background fill
+        // before the cards land on top of it.
+        const HDC memory = CreateCompatibleDC(dc);
+        const HBITMAP surface = memory != nullptr
+            ? CreateCompatibleBitmap(dc, client.right, client.bottom)
+            : nullptr;
+        const HGDIOBJ previousSurface = surface != nullptr
+            ? SelectObject(memory, surface)
+            : nullptr;
+        const HDC target = surface != nullptr ? memory : dc;
+
+        theme_->EraseBackground(target, client);
         const auto layout = ui::ComputeCommandDeckLayout(
             client.right, client.bottom, theme_->Dpi(),
             technicalDetailsExpanded_);
@@ -931,21 +987,33 @@ namespace soundstage
             OffsetRect(&bounds, 0, -scrollOffset_);
             return bounds;
         };
-        theme_->PaintCard(dc, shifted(layout.header),
+        theme_->PaintCard(target, shifted(layout.header),
                           theme_->Colors().cardRaised);
-        theme_->PaintCard(dc, shifted(layout.frontCard),
+        theme_->PaintCard(target, shifted(layout.frontCard),
                           theme_->Colors().card, frontCardFault_);
-        theme_->PaintCard(dc, shifted(layout.chairCard),
+        theme_->PaintCard(target, shifted(layout.chairCard),
                           theme_->Colors().card, chairCardFault_);
-        theme_->PaintCard(dc, shifted(layout.mixCard),
+        theme_->PaintCard(target, shifted(layout.mixCard),
                           theme_->Colors().card);
         if (layout.detailsVisible)
         {
             theme_->PaintCard(
-                dc, shifted(layout.detailsCard), theme_->Colors().card);
+                target, shifted(layout.detailsCard), theme_->Colors().card);
         }
         theme_->PaintCard(
-            dc, shifted(layout.actionBar), theme_->Colors().cardRaised);
+            target, shifted(layout.actionBar), theme_->Colors().cardRaised);
+
+        if (surface != nullptr)
+        {
+            BitBlt(dc, 0, 0, client.right, client.bottom,
+                   memory, 0, 0, SRCCOPY);
+            SelectObject(memory, previousSurface);
+            DeleteObject(surface);
+        }
+        if (memory != nullptr)
+        {
+            DeleteDC(memory);
+        }
     }
 
     void AppWindow::SetTechnicalDetailsExpanded(const bool expanded)
@@ -1518,10 +1586,16 @@ namespace soundstage
             engineStatus.state == audio::PlaybackState::Faulted &&
             engineStatus.lastFault.code != 0 &&
             engineStatus.lastFault.message.empty();
-        frontCardFault_ = physicalOutputFault &&
+        const bool frontFault = physicalOutputFault &&
             engineStatus.lastFault.role == audio::SpeakerRole::Front;
-        chairCardFault_ = physicalOutputFault &&
+        const bool chairFault = physicalOutputFault &&
             engineStatus.lastFault.role == audio::SpeakerRole::Rear;
+        if (frontFault != frontCardFault_ || chairFault != chairCardFault_)
+        {
+            frontCardFault_ = frontFault;
+            chairCardFault_ = chairFault;
+            InvalidateRect(window_, nullptr, FALSE);
+        }
 
         const bool physicalRouteReady =
             ui::HasValidPhysicalRouteSelection(
@@ -1542,26 +1616,41 @@ namespace soundstage
             }
         }
 
-        formatSeverity_ = ui.formatSeverity;
-        routeSeverity_ = ui.routeSeverity;
-        syncSeverity_ =
+        const audio::UiSeverity syncSeverity =
             engineStatus.clockHealth == audio::ClockHealth::Active
                 ? audio::UiSeverity::Healthy
                 : engineStatus.clockHealth ==
                     audio::ClockHealth::Unavailable
                     ? audio::UiSeverity::Warning
                     : audio::UiSeverity::Neutral;
-        SetWindowTextW(formatStatus_, ui.formatText.c_str());
-        SetWindowTextW(routeStatus_, ui.routeStateText.c_str());
-        SetWindowTextW(syncSummary_, ui.syncText.c_str());
-        SetWindowTextW(sideLevelHint_, ui.sideLevelHint.c_str());
+        // The statics take their color from these members at paint time;
+        // repaint one only when its severity actually changes.
+        if (formatSeverity_ != ui.formatSeverity)
+        {
+            formatSeverity_ = ui.formatSeverity;
+            InvalidateRect(formatStatus_, nullptr, FALSE);
+        }
+        if (routeSeverity_ != ui.routeSeverity)
+        {
+            routeSeverity_ = ui.routeSeverity;
+            InvalidateRect(routeStatus_, nullptr, FALSE);
+        }
+        if (syncSeverity_ != syncSeverity)
+        {
+            syncSeverity_ = syncSeverity;
+            InvalidateRect(syncSummary_, nullptr, FALSE);
+        }
+        SetTextIfChanged(formatStatus_, ui.formatText);
+        SetTextIfChanged(routeStatus_, ui.routeStateText);
+        SetTextIfChanged(syncSummary_, ui.syncText);
+        SetTextIfChanged(sideLevelHint_, ui.sideLevelHint);
 
         if (formatChanged)
         {
             const bool fivePointOne =
                 detectedVirtualFormat_ ==
                 audio::VirtualSurroundFormat::FivePointOne;
-            SetWindowTextW(startButton_, fivePointOne
+            SetTextIfChanged(startButton_, fivePointOne
                 ? L"Restart in 5.1" : L"Restart in 7.1");
             SetStatus(
                 fivePointOne
@@ -1572,7 +1661,7 @@ namespace soundstage
         }
         else
         {
-            SetWindowTextW(
+            SetTextIfChanged(
                 startButton_,
                 mode == audio::PlaybackMode::SystemAudio
                     ? L"Start Routing" : L"Start Test");
@@ -1682,14 +1771,14 @@ namespace soundstage
                  << L" | " << (reference ? L"reference" : L"follower");
             return text.str();
         };
-        SetWindowTextW(
+        SetTextIfChanged(
             frontStatus_,
             endpointText(
-                L"Front", engineStatus.endpoints[0], false).c_str());
-        SetWindowTextW(
+                L"Front", engineStatus.endpoints[0], false));
+        SetTextIfChanged(
             rearStatus_,
             endpointText(
-                L"Rear", engineStatus.endpoints[1], true).c_str());
+                L"Rear", engineStatus.endpoints[1], true));
 
         const wchar_t* health =
             engineStatus.clockHealth == audio::ClockHealth::Active
@@ -1715,8 +1804,7 @@ namespace soundstage
             sync << L" | "
                  << audio::FormatFault(engineStatus.lastFault);
         }
-        SetWindowTextW(syncStatus_, sync.str().c_str());
-        InvalidateRect(window_, nullptr, FALSE);
+        SetTextIfChanged(syncStatus_, sync.str());
     }
 
     void AppWindow::UpdateModeControls()
@@ -1768,9 +1856,14 @@ namespace soundstage
         const std::wstring& text,
         const audio::UiSeverity severity)
     {
+        // Called every status tick; repaint only on an actual change.
+        const bool severityChanged = statusSeverity_ != severity;
         statusSeverity_ = severity;
-        SetWindowTextW(status_, text.c_str());
-        InvalidateRect(status_, nullptr, TRUE);
+        const bool textChanged = SetTextIfChanged(status_, text);
+        if (severityChanged && !textChanged)
+        {
+            InvalidateRect(status_, nullptr, FALSE);
+        }
     }
 
     COLORREF AppWindow::SeverityColor(
