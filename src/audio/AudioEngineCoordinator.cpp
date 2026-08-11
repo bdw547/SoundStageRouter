@@ -46,6 +46,18 @@ namespace soundstage::audio
     {
     }
 
+    AudioEngineCoordinator::AudioEngineCoordinator(
+        std::unique_ptr<IEndpointSessionFactory> factory,
+        std::unique_ptr<ILoopbackCaptureFactory> captureFactory)
+        : factory_(std::move(factory)),
+          captureFactory_(std::move(captureFactory)),
+          engine_(std::make_unique<EngineController>(
+              *factory_, captureFactory_.get())),
+          status_(std::make_shared<const EngineStatus>()),
+          worker_([this](const std::stop_token token) { WorkerMain(token); })
+    {
+    }
+
     AudioEngineCoordinator::~AudioEngineCoordinator()
     {
         cancellationRequested_.store(true, std::memory_order_release);
@@ -104,6 +116,23 @@ namespace soundstage::audio
             command.type = CommandType::Delay;
             command.role = role;
             command.delayMs = delayMs;
+            commands_.push_back(std::move(command));
+        }
+        catch (...)
+        {
+        }
+        condition_.notify_one();
+    }
+
+    void AudioEngineCoordinator::PostSurroundMixLevels(
+        const SurroundMixLevels levels) noexcept
+    {
+        try
+        {
+            std::lock_guard lock(mutex_);
+            Command command;
+            command.type = CommandType::SurroundMix;
+            command.surroundMix = levels;
             commands_.push_back(std::move(command));
         }
         catch (...)
@@ -185,6 +214,9 @@ namespace soundstage::audio
                         break;
                     case CommandType::Delay:
                         engine_->SetDelayMs(command.role, command.delayMs);
+                        break;
+                    case CommandType::SurroundMix:
+                        engine_->SetSurroundMixLevels(command.surroundMix);
                         break;
                     }
                 }

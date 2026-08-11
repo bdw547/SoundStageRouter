@@ -43,6 +43,28 @@ namespace
         return static_cast<int>(value);
     }
 
+    std::optional<int> ParsePercent(const std::wstring_view text)
+    {
+        if (text.empty())
+        {
+            return std::nullopt;
+        }
+        int value = 0;
+        for (const wchar_t character : text)
+        {
+            if (character < L'0' || character > L'9')
+            {
+                return std::nullopt;
+            }
+            value = value * 10 + (character - L'0');
+            if (value > soundstage::audio::MaximumLevelPercent)
+            {
+                return std::nullopt;
+            }
+        }
+        return value;
+    }
+
     bool IsKnownPatternString(const std::wstring_view value) noexcept
     {
         return value == L"PairedClicks" ||
@@ -157,10 +179,14 @@ namespace soundstage
             ReadString(path_, L"FrontDelayMs", L"0"));
         const std::optional<int> rearDelay = ParseDelay(
             ReadString(path_, L"RearDelayMs", L"0"));
-        const std::optional<int> frontLevel = ParseDelay(
+        const std::optional<int> frontLevel = ParsePercent(
             ReadString(path_, L"FrontLevelPercent", L"100"));
-        const std::optional<int> rearLevel = ParseDelay(
+        const std::optional<int> rearLevel = ParsePercent(
             ReadString(path_, L"RearLevelPercent", L"100"));
+        const std::optional<int> backLevel = ParsePercent(
+            ReadString(path_, L"BackLevelPercent", L"100"));
+        const std::optional<int> sideLevel = ParsePercent(
+            ReadString(path_, L"SideLevelPercent", L"100"));
         const std::wstring pattern = ReadString(
             path_, L"TestPattern", L"PairedClicks");
         const std::wstring mode = ReadString(
@@ -173,6 +199,8 @@ namespace soundstage
             frontLevel.value_or(100));
         settings.rearLevelPercent = audio::ClampLevelPercent(
             rearLevel.value_or(100));
+        settings.backLevelPercent = backLevel.value_or(100);
+        settings.sideLevelPercent = sideLevel.value_or(100);
         settings.lastPattern = TestPatternFromString(pattern);
         settings.mode = mode == L"TestSignals"
             ? audio::PlaybackMode::TestSignals
@@ -185,6 +213,7 @@ namespace soundstage
         settings.loadAdjustedValues =
             !frontDelay.has_value() || !rearDelay.has_value() ||
             !frontLevel.has_value() || !rearLevel.has_value() ||
+            !backLevel.has_value() || !sideLevel.has_value() ||
             !IsKnownPatternString(pattern) ||
             !IsKnownModeString(mode) ||
             !IsKnownRearFillString(rearFill);
@@ -203,6 +232,10 @@ namespace soundstage
             audio::ClampLevelPercent(settings.frontLevelPercent)));
         WriteString(path_, L"RearLevelPercent", std::to_wstring(
             audio::ClampLevelPercent(settings.rearLevelPercent)));
+        WriteString(path_, L"BackLevelPercent", std::to_wstring(
+            audio::ClampLevelPercent(settings.backLevelPercent)));
+        WriteString(path_, L"SideLevelPercent", std::to_wstring(
+            audio::ClampLevelPercent(settings.sideLevelPercent)));
         WriteString(path_, L"TestPattern",
                     std::wstring(TestPatternToString(settings.lastPattern)));
         WriteString(path_, L"Mode",

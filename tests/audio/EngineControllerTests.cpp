@@ -15,6 +15,10 @@ namespace
         unsigned prepareCalls = 0;
         unsigned startCalls = 0;
         unsigned stopCalls = 0;
+        unsigned surroundMixCalls = 0;
+        unsigned surroundMixCallsAtPrepare = 0;
+        SurroundMixLevels lastMixLevels{};
+        SurroundMixLevels mixLevelsAtPrepare{};
     };
 
     class FakeCapture final : public ILoopbackCapture
@@ -26,12 +30,19 @@ namespace
             std::stop_token) override
         {
             ++state_.prepareCalls;
+            state_.surroundMixCallsAtPrepare = state_.surroundMixCalls;
+            state_.mixLevelsAtPrepare = state_.lastMixLevels;
             return state_.prepareResult;
         }
         SessionResult Start() override
         {
             ++state_.startCalls;
             return state_.startResult;
+        }
+        void SetSurroundMixLevels(SurroundMixLevels levels) noexcept override
+        {
+            ++state_.surroundMixCalls;
+            state_.lastMixLevels = levels;
         }
         CaptureTelemetry Snapshot() noexcept override
         {
@@ -212,6 +223,47 @@ TEST(Engine_SystemModeStartsCaptureAfterOutputsArePrimed)
     EXPECT_EQ(captures.state.startCalls, 1u);
     engine.Stop();
     EXPECT_EQ(captures.state.stopCalls, 1u);
+}
+
+TEST(Engine_SystemModePublishesSurroundMixBeforeCapturePreparation)
+{
+    FakeEndpointSessionFactory outputs;
+    FakeCaptureFactory captures;
+    EngineController engine(outputs, &captures);
+    RunConfiguration configuration = ValidSystemConfiguration();
+    configuration.surroundMix = {0.4f, 0.75f};
+
+    EXPECT_TRUE(engine.Start(configuration, {}).ok);
+
+    EXPECT_EQ(captures.state.surroundMixCallsAtPrepare, 1u);
+    EXPECT_NEAR(captures.state.mixLevelsAtPrepare.back, 0.4, 1e-6);
+    EXPECT_NEAR(captures.state.mixLevelsAtPrepare.side, 0.75, 1e-6);
+}
+
+TEST(Engine_ForwardsLiveSurroundMixWithoutRestartingCapture)
+{
+    FakeEndpointSessionFactory outputs;
+    FakeCaptureFactory captures;
+    EngineController engine(outputs, &captures);
+    EXPECT_TRUE(engine.Start(ValidSystemConfiguration(), {}).ok);
+
+    engine.SetSurroundMixLevels({0.2f, 1.0f});
+
+    EXPECT_EQ(captures.state.surroundMixCalls, 2u);
+    EXPECT_NEAR(captures.state.lastMixLevels.back, 0.2, 1e-6);
+    EXPECT_NEAR(captures.state.lastMixLevels.side, 1.0, 1e-6);
+    EXPECT_EQ(captures.state.startCalls, 1u);
+}
+
+TEST(Engine_SurroundMixIsSafeWithoutSystemCapture)
+{
+    FakeEndpointSessionFactory outputs;
+    EngineController engine(outputs);
+    EXPECT_TRUE(engine.Start(ValidRunConfiguration(), {}).ok);
+
+    engine.SetSurroundMixLevels({0.2f, 1.0f});
+
+    EXPECT_EQ(engine.Status().state, PlaybackState::Running);
 }
 
 TEST(Engine_CaptureFaultStopsBothPhysicalOutputs)

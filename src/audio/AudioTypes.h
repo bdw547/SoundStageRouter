@@ -54,6 +54,7 @@ namespace soundstage::audio
         TestPattern pattern = TestPattern::PairedClicks;
         std::wstring virtualEndpointId;
         SpeakerRole clockReferenceRole = SpeakerRole::Rear;
+        SurroundMixLevels surroundMix{};
         std::vector<EndpointRoute> routes;
     };
 

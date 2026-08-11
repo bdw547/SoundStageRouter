@@ -21,6 +21,7 @@ namespace soundstage::audio
                             std::stop_token stopToken);
         void Stop() noexcept;
         void SetDelayMs(SpeakerRole role, std::uint32_t delayMs) noexcept;
+        void SetSurroundMixLevels(SurroundMixLevels levels) noexcept;
         void Tick(std::uint64_t qpc100ns) noexcept;
         [[nodiscard]] EngineStatus Status() const;
 

@@ -24,6 +24,8 @@ namespace soundstage
         int rearDelayMs = 0;
         int frontLevelPercent = 100;
         int rearLevelPercent = 100;
+        int backLevelPercent = 100;
+        int sideLevelPercent = 100;
         audio::TestPattern lastPattern =
             audio::TestPattern::PairedClicks;
         audio::PlaybackMode mode = audio::PlaybackMode::SystemAudio;

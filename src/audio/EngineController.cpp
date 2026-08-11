@@ -75,6 +75,7 @@ namespace soundstage::audio
                 return Fail({SessionCreationCode, SpeakerRole::Front,
                              L"Unable to create loopback capture"});
             }
+            capture_->SetSurroundMixLevels(configuration.surroundMix);
         }
         const auto cancelStart = [&]() {
             Stop();
@@ -254,6 +255,15 @@ namespace soundstage::audio
             synchronizer_.NotifyManualDelayChanged();
             status_.clockHealth = ClockHealth::Settling;
             status_.correctionPpm = 0.0;
+        }
+    }
+
+    void EngineController::SetSurroundMixLevels(
+        const SurroundMixLevels levels) noexcept
+    {
+        if (capture_)
+        {
+            capture_->SetSurroundMixLevels(levels);
         }
     }
 

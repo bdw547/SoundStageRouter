@@ -19,6 +19,9 @@ namespace soundstage::audio
         AudioEngineCoordinator();
         explicit AudioEngineCoordinator(
             std::unique_ptr<IEndpointSessionFactory> factory);
+        AudioEngineCoordinator(
+            std::unique_ptr<IEndpointSessionFactory> factory,
+            std::unique_ptr<ILoopbackCaptureFactory> captureFactory);
         ~AudioEngineCoordinator();
 
         AudioEngineCoordinator(const AudioEngineCoordinator&) = delete;
@@ -27,16 +30,18 @@ namespace soundstage::audio
         void PostStart(RunConfiguration configuration);
         void PostStop() noexcept;
         void PostDelay(SpeakerRole role, std::uint32_t delayMs) noexcept;
+        void PostSurroundMixLevels(SurroundMixLevels levels) noexcept;
         [[nodiscard]] std::shared_ptr<const EngineStatus> Status() const noexcept;
 
     private:
-        enum class CommandType { Start, Stop, Delay };
+        enum class CommandType { Start, Stop, Delay, SurroundMix };
         struct Command
         {
             CommandType type = CommandType::Stop;
             RunConfiguration configuration{};
             SpeakerRole role = SpeakerRole::Front;
             std::uint32_t delayMs = 0;
+            SurroundMixLevels surroundMix{};
         };
 
         void WorkerMain(std::stop_token stopToken) noexcept;

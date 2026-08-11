@@ -11,6 +11,52 @@ using namespace test_audio;
 
 namespace
 {
+    struct FakeCoordinatorCaptureState
+    {
+        std::atomic<unsigned> mixCalls{0};
+        std::atomic<unsigned> startCalls{0};
+        SurroundMixLevels lastMixLevels{};
+    };
+
+    class FakeCoordinatorCapture final : public ILoopbackCapture
+    {
+    public:
+        explicit FakeCoordinatorCapture(FakeCoordinatorCaptureState& state)
+            : state_(state) {}
+
+        SessionResult Prepare(MasterFrameRingBuffer&, RearFillMode,
+                              std::stop_token) override
+        {
+            return SessionResult::Success();
+        }
+        SessionResult Start() override
+        {
+            ++state_.startCalls;
+            return SessionResult::Success();
+        }
+        void SetSurroundMixLevels(SurroundMixLevels levels) noexcept override
+        {
+            state_.lastMixLevels = levels;
+            ++state_.mixCalls;
+        }
+        CaptureTelemetry Snapshot() noexcept override { return {}; }
+        void Stop() noexcept override {}
+
+    private:
+        FakeCoordinatorCaptureState& state_;
+    };
+
+    class FakeCoordinatorCaptureFactory final : public ILoopbackCaptureFactory
+    {
+    public:
+        std::unique_ptr<ILoopbackCapture> Create() override
+        {
+            return std::make_unique<FakeCoordinatorCapture>(state);
+        }
+
+        FakeCoordinatorCaptureState state;
+    };
+
     template <typename Predicate>
     bool WaitFor(Predicate predicate,
                  const std::chrono::milliseconds timeout =
@@ -67,4 +113,34 @@ TEST(Coordinator_SerializesStartDelayAndStopCommands)
     EXPECT_TRUE(WaitFor([&] {
         return coordinator.Status()->state == PlaybackState::Stopped;
     }));
+}
+
+TEST(Coordinator_SerializesLiveSurroundMixWithoutRestartingCapture)
+{
+    auto outputs = std::make_unique<FakeEndpointSessionFactory>();
+    auto captures = std::make_unique<FakeCoordinatorCaptureFactory>();
+    FakeCoordinatorCaptureFactory* observed = captures.get();
+    AudioEngineCoordinator coordinator(
+        std::move(outputs), std::move(captures));
+    RunConfiguration configuration = ValidRunConfiguration();
+    configuration.mode = PlaybackMode::SystemAudio;
+    configuration.virtualEndpointId = L"fake-virtual";
+    configuration.surroundMix = {0.4f, 0.75f};
+
+    coordinator.PostStart(std::move(configuration));
+    EXPECT_TRUE(WaitFor([&] {
+        return coordinator.Status()->state == PlaybackState::Running &&
+               observed->state.mixCalls.load() == 1;
+    }));
+    EXPECT_NEAR(observed->state.lastMixLevels.back, 0.4, 1e-6);
+    EXPECT_NEAR(observed->state.lastMixLevels.side, 0.75, 1e-6);
+
+    coordinator.PostSurroundMixLevels({0.2f, 1.0f});
+
+    EXPECT_TRUE(WaitFor([&] {
+        return observed->state.mixCalls.load() == 2;
+    }));
+    EXPECT_NEAR(observed->state.lastMixLevels.back, 0.2, 1e-6);
+    EXPECT_NEAR(observed->state.lastMixLevels.side, 1.0, 1e-6);
+    EXPECT_EQ(observed->state.startCalls.load(), 1u);
 }
