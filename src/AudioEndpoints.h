@@ -1,5 +1,7 @@
 #pragma once
 
+#include "audio/VirtualSurroundContract.h"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -19,6 +21,8 @@ namespace soundstage
         bool isFloatingPoint = false;
         bool isVirtualEndpoint = false;
         bool virtualContractValid = false;
+        audio::VirtualSurroundFormat virtualSurroundFormat =
+            audio::VirtualSurroundFormat::Unsupported;
     };
 
     class AudioEndpointService

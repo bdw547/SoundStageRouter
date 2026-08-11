@@ -165,7 +165,9 @@ namespace soundstage::audio
                 }
                 return Fail(captured.fault);
             }
-            status_.virtualEndpointReady = true;
+            const CaptureTelemetry captureStatus = capture_->Snapshot();
+            status_.virtualEndpointReady = captureStatus.prepared;
+            status_.surroundFormat = captureStatus.surroundFormat;
             if (stopToken.stop_requested())
             {
                 return cancelStart();
@@ -210,6 +212,9 @@ namespace soundstage::audio
         const bool preserveFault = status_.state == PlaybackState::Faulted;
         if (!sessions_[0] && !sessions_[1] && !capture_)
         {
+            status_.virtualEndpointReady = false;
+            status_.surroundFormat =
+                VirtualSurroundFormat::Unsupported;
             if (!preserveFault)
             {
                 status_.state = PlaybackState::Stopped;
@@ -237,6 +242,7 @@ namespace soundstage::audio
             endpoint.running = false;
         }
         status_.virtualEndpointReady = false;
+        status_.surroundFormat = VirtualSurroundFormat::Unsupported;
         masterFrames_.reset();
         status_.state =
             preserveFault ? PlaybackState::Faulted : PlaybackState::Stopped;
@@ -403,6 +409,7 @@ namespace soundstage::audio
             }
         }
         status_.virtualEndpointReady = false;
+        status_.surroundFormat = VirtualSurroundFormat::Unsupported;
         masterFrames_.reset();
         for (EndpointTelemetry& endpoint : status_.endpoints)
         {

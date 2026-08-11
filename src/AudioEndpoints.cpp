@@ -112,15 +112,17 @@ namespace
         endpoint.channelMask = GetChannelMask(format);
         endpoint.isFloatingPoint = IsFloatingPoint(format);
         endpoint.formatDescription = DescribeFormat(format);
-        endpoint.virtualContractValid =
-            endpoint.isVirtualEndpoint &&
-            soundstage::audio::DetectVirtualSurroundFormat({
+        endpoint.virtualSurroundFormat = endpoint.isVirtualEndpoint
+            ? soundstage::audio::DetectVirtualSurroundFormat({
                 format->nSamplesPerSec,
                 format->nChannels,
                 format->wBitsPerSample,
                 format->nBlockAlign,
                 endpoint.channelMask,
-                endpoint.isFloatingPoint}) !=
+                endpoint.isFloatingPoint})
+            : soundstage::audio::VirtualSurroundFormat::Unsupported;
+        endpoint.virtualContractValid =
+            endpoint.virtualSurroundFormat !=
                 soundstage::audio::VirtualSurroundFormat::Unsupported;
         CoTaskMemFree(format);
     }

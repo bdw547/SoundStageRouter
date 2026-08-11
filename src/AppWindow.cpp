@@ -1,4 +1,5 @@
 #include "AppWindow.h"
+#include "audio/SurroundUiState.h"
 #include "audio/VirtualSurroundContract.h"
 #include "audio/WasapiEndpointSession.h"
 
@@ -153,7 +154,7 @@ namespace soundstage
         {
         case WM_CREATE:
             CreateControls();
-            RefreshDevices();
+            static_cast<void>(RefreshDevices());
             SetTimer(window_, StatusTimerId, StatusTimerPeriodMs, nullptr);
             return 0;
         case WM_SIZE:
@@ -185,7 +186,7 @@ namespace soundstage
             switch (LOWORD(wParam))
             {
             case RefreshButtonId:
-                RefreshDevices();
+                static_cast<void>(RefreshDevices());
                 return 0;
             case SaveButtonId:
                 SaveSettings();
@@ -212,6 +213,12 @@ namespace soundstage
             if (wParam == StatusTimerId && coordinator_)
             {
                 const auto status = coordinator_->Status();
+                if (audio::ShouldRefreshSurroundDiscovery(
+                        observedPlaybackState_, status->state))
+                {
+                    static_cast<void>(RefreshDevices());
+                }
+                observedPlaybackState_ = status->state;
                 RenderEngineStatus(*status);
                 const bool selectable =
                     status->state == audio::PlaybackState::Stopped ||
@@ -482,7 +489,7 @@ namespace soundstage
         MoveWindow(status_, margin, routesTop + 388, contentWidth, 25, TRUE);
     }
 
-    void AppWindow::RefreshDevices()
+    bool AppWindow::RefreshDevices()
     {
         try
         {
@@ -516,6 +523,15 @@ namespace soundstage
                 [](const AudioEndpoint& endpoint) {
                     return endpoint.virtualContractValid;
                 });
+            const auto validVirtual = std::find_if(
+                endpoints_.begin(), endpoints_.end(),
+                [](const AudioEndpoint& endpoint) {
+                    return endpoint.virtualContractValid;
+                });
+            detectedVirtualFormat_ =
+                validVirtualCount == 1 && validVirtual != endpoints_.end()
+                    ? validVirtual->virtualSurroundFormat
+                    : audio::VirtualSurroundFormat::Unsupported;
             if (virtualCount == 0)
             {
                 SetWindowTextW(
@@ -540,18 +556,38 @@ namespace soundstage
             }
             else
             {
-                SetWindowTextW(
-                    virtualStatus_,
-                    L"Driver status: ready. Windows default output must be "
-                    L"SoundStage Router Surround; keep this app running.");
+                const wchar_t* ready =
+                    detectedVirtualFormat_ ==
+                        audio::VirtualSurroundFormat::FivePointOne
+                    ? L"Driver status: ready in 5.1. Side Level is visible "
+                      L"but disabled. Used when Windows is set to 7.1."
+                    : L"Driver status: ready in 7.1. Windows default output "
+                      L"must be SoundStage Router Surround.";
+                SetWindowTextW(virtualStatus_, ready);
             }
+            const audio::SurroundUiState ui =
+                audio::BuildSurroundUiState(
+                    ComboBox_GetCurSel(modeCombo_) == 1
+                        ? audio::PlaybackMode::TestSignals
+                        : audio::PlaybackMode::SystemAudio,
+                    audio::VirtualSurroundFormat::Unsupported,
+                    detectedVirtualFormat_, false);
+            SetWindowTextW(formatStatus_, ui.badge.data());
+            UpdateSurroundControlAvailability(ui.format);
             SetStatus(status);
+            return true;
         }
         catch (const std::exception& error)
         {
+            detectedVirtualFormat_ =
+                audio::VirtualSurroundFormat::Unsupported;
+            SetWindowTextW(formatStatus_, L"Surround format unavailable");
+            UpdateSurroundControlAvailability(
+                audio::VirtualSurroundFormat::Unsupported);
             const std::string message(error.what());
             SetStatus(L"Unable to enumerate audio devices.");
             MessageBoxA(window_, message.c_str(), "Audio device error", MB_OK | MB_ICONERROR);
+            return false;
         }
     }
 
@@ -739,6 +775,11 @@ namespace soundstage
 
     void AppWindow::StartTest()
     {
+        if (!RefreshDevices())
+        {
+            return;
+        }
+
         std::optional<audio::RunConfiguration> configuration =
             BuildRunConfiguration();
         if (!configuration)
@@ -880,19 +921,27 @@ namespace soundstage
     void AppWindow::RenderEngineStatus(
         const audio::EngineStatus& engineStatus) const
     {
-        const wchar_t* formatText = L"Surround format unavailable";
-        if (engineStatus.surroundFormat ==
-            audio::VirtualSurroundFormat::FivePointOne)
+        const audio::PlaybackMode mode =
+            ComboBox_GetCurSel(modeCombo_) == 1
+                ? audio::PlaybackMode::TestSignals
+                : audio::PlaybackMode::SystemAudio;
+        const audio::SurroundUiState ui = audio::BuildSurroundUiState(
+            mode, engineStatus.surroundFormat, detectedVirtualFormat_,
+            engineStatus.state == audio::PlaybackState::Faulted);
+        SetWindowTextW(formatStatus_, ui.badge.data());
+        UpdateSurroundControlAvailability(ui.format);
+        if (!ui.restartAction.empty())
         {
-            formatText = L"5.1 detected";
+            SetWindowTextW(startButton_, ui.restartAction.data());
+            SetStatus(std::wstring(ui.recovery));
         }
-        else if (engineStatus.surroundFormat ==
-                 audio::VirtualSurroundFormat::SevenPointOne)
+        else
         {
-            formatText = L"7.1 detected";
+            SetWindowTextW(
+                startButton_,
+                mode == audio::PlaybackMode::SystemAudio
+                    ? L"Start Routing" : L"Start Test");
         }
-        SetWindowTextW(formatStatus_, formatText);
-        UpdateSurroundControlAvailability(engineStatus.surroundFormat);
 
         const auto endpointText = [](const wchar_t* name,
                                      const audio::EndpointTelemetry& endpoint,
@@ -967,10 +1016,13 @@ namespace soundstage
     void AppWindow::UpdateSurroundControlAvailability(
         const audio::VirtualSurroundFormat format) const
     {
-        const bool system = ComboBox_GetCurSel(modeCombo_) != 1;
-        const BOOL sideAvailable =
-            (!system || format != audio::VirtualSurroundFormat::FivePointOne)
-                ? TRUE : FALSE;
+        const audio::PlaybackMode mode =
+            ComboBox_GetCurSel(modeCombo_) == 1
+                ? audio::PlaybackMode::TestSignals
+                : audio::PlaybackMode::SystemAudio;
+        const audio::SurroundUiState ui = audio::BuildSurroundUiState(
+            mode, format, detectedVirtualFormat_, false);
+        const BOOL sideAvailable = ui.sideEnabled ? TRUE : FALSE;
         EnableWindow(backLevelLabel_, TRUE);
         EnableWindow(backLevel_, TRUE);
         EnableWindow(backLevelValue_, TRUE);

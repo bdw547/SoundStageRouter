@@ -28,7 +28,7 @@ namespace soundstage
 
         void CreateControls();
         void LayoutControls(int width, int height) const;
-        void RefreshDevices();
+        [[nodiscard]] bool RefreshDevices();
         void PopulateControls();
         void UpdateModeControls() const;
         void UpdateSurroundControlAvailability(
@@ -94,6 +94,10 @@ namespace soundstage
         HBRUSH backgroundBrush_ = nullptr;
 
         std::vector<AudioEndpoint> endpoints_;
+        audio::VirtualSurroundFormat detectedVirtualFormat_ =
+            audio::VirtualSurroundFormat::Unsupported;
+        audio::PlaybackState observedPlaybackState_ =
+            audio::PlaybackState::Stopped;
         RouterSettingsStore settingsStore_;
         RouterSettings settings_;
         std::unique_ptr<audio::AudioEngineCoordinator> coordinator_;

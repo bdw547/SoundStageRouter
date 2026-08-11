@@ -240,6 +240,42 @@ TEST(Engine_SystemModePublishesDetectedSurroundFormatAfterTick)
               VirtualSurroundFormat::SevenPointOne);
 }
 
+TEST(Engine_SystemModePublishesDetectedSurroundFormatImmediatelyAfterPrepare)
+{
+    FakeEndpointSessionFactory outputs;
+    FakeCaptureFactory captures;
+    captures.state.telemetry.surroundFormat =
+        VirtualSurroundFormat::FivePointOne;
+    EngineController engine(outputs, &captures);
+
+    EXPECT_TRUE(engine.Start(ValidSystemConfiguration(), {}).ok);
+
+    EXPECT_EQ(engine.Status().surroundFormat,
+              VirtualSurroundFormat::FivePointOne);
+}
+
+TEST(Engine_StopAndFailureClearStaleSurroundFormat)
+{
+    FakeEndpointSessionFactory outputs;
+    FakeCaptureFactory captures;
+    captures.state.telemetry.surroundFormat =
+        VirtualSurroundFormat::SevenPointOne;
+    EngineController engine(outputs, &captures);
+    EXPECT_TRUE(engine.Start(ValidSystemConfiguration(), {}).ok);
+    engine.Tick(10'000'000);
+
+    engine.Stop();
+    EXPECT_EQ(engine.Status().surroundFormat,
+              VirtualSurroundFormat::Unsupported);
+
+    EXPECT_TRUE(engine.Start(ValidSystemConfiguration(), {}).ok);
+    captures.state.telemetry.faultCode = 1234;
+    engine.Tick(20'000'000);
+    EXPECT_EQ(engine.Status().state, PlaybackState::Faulted);
+    EXPECT_EQ(engine.Status().surroundFormat,
+              VirtualSurroundFormat::Unsupported);
+}
+
 TEST(Engine_SystemModePublishesSurroundMixBeforeCapturePreparation)
 {
     FakeEndpointSessionFactory outputs;
