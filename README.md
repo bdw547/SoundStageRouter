@@ -18,8 +18,8 @@ After installing the driver using its separate instructions:
 2. Make **SoundStage Router Surround** the Windows default output.
 3. Start SoundStage Router and select **System audio (virtual surround)**. Check
    for **5.1 detected** or **7.1 detected** in the app.
-4. Select distinct physical Front and Rear outputs. The virtual endpoint is
-   deliberately unavailable in these selectors to prevent feedback.
+4. Select distinct physical **Front** and **Chair** outputs. The virtual
+   endpoint is deliberately unavailable in these selectors to prevent feedback.
 5. Choose rear fill if desired: **Off** (default), **Duplicate (-6 dB)**, or
    **Ambient difference**.
 6. Set the linked-stereo **Back Level** and **Side Level** controls from 0–100%,
@@ -31,6 +31,31 @@ visible fault; restart is always manual. Changing the Windows speaker format
 during a run also stops routing safely. After Windows finishes the change,
 start routing again and confirm the newly detected format. There is no
 automatic restart.
+
+## Command Deck dashboard
+
+The window is a single dark dashboard. The header shows the detected Windows
+format (**5.1 detected** or **7.1 detected**) and the route state (**Ready**,
+**Routing**, **Setup required**, or a fault). The synchronization line reads
+**Aligned** once the outputs are locked together and **Synchronizing
+outputs...** while alignment settles.
+
+- The **Front** (soundbar / monitor) and **Chair** (Bluetooth headrest) cards
+  each hold that output's device selector plus its **Delay (ms)** and
+  **Level (%)** fields. Delays stay adjustable live while routing; Level is
+  set while stopped.
+- The **Chair Mix** card holds the linked-stereo **Back Level** and
+  **Side Level** controls (0–100%, default 100%). Both apply live during
+  routing. In 5.1, **Side Level** stays visible but disabled with a short
+  explanation, because 5.1 carries no side channels.
+- One primary action starts or stops routing. If Windows changes the speaker
+  format, routing stops safely, an amber message explains what happened, and
+  the action relabels to **Restart in 5.1** or **Restart in 7.1**. If a
+  physical output disconnects, the message names the affected card.
+- **Technical details** expands the collapsed diagnostics: per-output sample
+  rate, channel count, buffer, delay, underruns, and reference/follower role,
+  plus clock correction in ppm, capture overflow/underrun counts, and the last
+  fault code. It starts collapsed on every launch.
 
 The virtual endpoint supports these exact shared-mode loopback layouts:
 
@@ -47,14 +72,14 @@ The deterministic surround-to-physical matrix is:
 
 - Front L = clamp(FL + 0.707 FC + 0.5 LFE)
 - Front R = clamp(FR + 0.707 FC + 0.5 LFE)
-- Rear L = clamp((Back Level / 100) × BL + (Side Level / 100) × SL)
-- Rear R = clamp((Back Level / 100) × BR + (Side Level / 100) × SR)
+- Chair L = clamp((Back Level / 100) × BL + (Side Level / 100) × SL)
+- Chair R = clamp((Back Level / 100) × BR + (Side Level / 100) × SR)
 
 Back and Side are independently adjustable linked-stereo contributions. They
 default to 100%, have no fixed attenuation, and are limited only if their sum
 exceeds the valid sample range. In 5.1, Side samples are zero and Side Level is
-disabled because it has no signal effect. The existing physical Front and Rear
-levels remain separate post-routing master gains.
+disabled because it has no signal effect. The physical Front and Chair
+**Level (%)** fields remain separate output master gains, set before a run.
 
 Rear fill is applied only when all native BL, BR, SL, and SR samples are
 silent, as determined before the Back/Side controls are applied. Setting a

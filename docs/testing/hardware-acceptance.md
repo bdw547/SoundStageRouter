@@ -10,7 +10,7 @@ endpoint.
 ## Setup
 
 1. Select the Realtek device as **Front** and the Bluetooth headrest as
-   **Rear**.
+   **Chair**.
 2. Select **Paired clicks**, start playback, and manually adjust the endpoint
    delays until each front/rear pair is heard as one event.
 3. Place one microphone at the listening position. Mark its position and do
@@ -44,14 +44,14 @@ change whenever possible.
 1. Install the updated driver and verify Windows shows exactly one **SoundStage
    Router Surround** render endpoint. Confirm Windows offers both formats above
    and initially selects 7.1. Set it as the Windows default output. Confirm the
-   app does not offer the virtual endpoint as a physical Front or Rear output.
+   app does not offer the virtual endpoint as a physical Front or Chair output.
 2. In Windows select 5.1 at 48 kHz. In the app select **System audio (virtual
-   surround)**, the target Front and Rear devices, and rear fill Off. Start
+   surround)**, the target Front and Chair devices, and rear fill Off. Start
    routing, confirm **5.1 detected**, and play a known six-channel identification
    file from an ordinary shared-mode application. Verify FL/FR/FC/LFE reach
    only Front according to `FL + 0.707 FC + 0.5 LFE` and its right-channel
-   equivalent; verify BL/BR reach Rear with correct orientation. Side Level
-   must be disabled and have no signal effect.
+   equivalent; verify BL/BR reach the chair speakers with correct orientation.
+   Side Level must be disabled and have no signal effect.
 3. Stop routing, select 7.1 at 48 kHz in Windows, and restart routing. Confirm
    **7.1 detected**, then play a known eight-channel identification file.
    Verify all channels follow the documented order and that Front behavior is
@@ -79,9 +79,9 @@ change whenever possible.
    underrun, clock-correction, and audible-glitch observations. The app must
    remain open throughout.
 
-Separately, play stereo content and verify rear fill Off is silent at Rear,
-Duplicate produces rear stereo at -6 dB, and Ambient produces difference
-ambience. Repeat with native Back or Side content and verify native surround
+Separately, play stereo content and verify rear fill Off is silent at the
+chair speakers, Duplicate produces rear stereo at -6 dB, and Ambient produces
+difference ambience. Repeat with native Back or Side content and verify native surround
 replaces fill.
 
 ## Start recording

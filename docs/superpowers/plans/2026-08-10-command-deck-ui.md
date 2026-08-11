@@ -35,7 +35,7 @@
 - Consumes: `audio::EngineStatus`, `audio::PlaybackMode`, and `audio::VirtualSurroundFormat`
 - Produces: `SurroundUiState BuildSurroundUiState(const audio::EngineStatus&, audio::PlaybackMode)`
 
-- [ ] **Step 1: Write failing presentation tests**
+- [x] **Step 1: Write failing presentation tests**
 
 Cover these exact outputs:
 
@@ -54,7 +54,7 @@ EXPECT_TRUE(ui.sideLevelEnabled);
 
 Add 5.1 expectations (`SideLevelEnabled == false`, explanation text), Settling (`Synchronizing outputs...`), stopped Ready, missing virtual endpoint, and Faulted with a nonempty recovery message.
 
-- [ ] **Step 2: Build to verify RED**
+- [x] **Step 2: Build to verify RED**
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.Tests.vcxproj -t:Build -p:Configuration=Debug -p:Platform=x64
@@ -62,7 +62,7 @@ Add 5.1 expectations (`SideLevelEnabled == false`, explanation text), Settling (
 
 Expected: build fails because the new model does not exist.
 
-- [ ] **Step 3: Implement the focused model**
+- [x] **Step 3: Implement the focused model**
 
 Define:
 
@@ -88,7 +88,7 @@ struct SurroundUiState
 
 Keep it pure: no HWND, COM, timers, global state, or resource lookup. Map known states to the exact plain-language strings in the approved design.
 
-- [ ] **Step 4: Add the sources to both project files and run tests**
+- [x] **Step 4: Add the sources to both project files and run tests**
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.sln -t:Build -p:Configuration=Debug -p:Platform=x64
@@ -97,7 +97,7 @@ Keep it pure: no HWND, COM, timers, global state, or resource lookup. Map known 
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/ui tests/ui SoundStageRouter.vcxproj SoundStageRouter.Tests.vcxproj
@@ -117,7 +117,7 @@ git commit -m "feat(ui): add surround presentation model"
 - Consumes: `SurroundUiState`, existing HWND controls, and functional Back/Side trackbars from the core plan
 - Produces: themed dashboard painting, stable card layout, collapsed Technical details, and keyboard/DPI-friendly native controls
 
-- [ ] **Step 1: Add a centralized native theme**
+- [x] **Step 1: Add a centralized native theme**
 
 Define one palette rather than scattering literals:
 
@@ -139,7 +139,7 @@ struct CommandDeckColors
 
 `CommandDeckTheme` owns fonts, solid brushes, pens, DPI-scaled spacing, and `PaintCard(HDC, RECT, COLORREF)`. Release every GDI object in its destructor.
 
-- [ ] **Step 2: Replace the long-form layout with four stable regions**
+- [x] **Step 2: Replace the long-form layout with four stable regions**
 
 At approximately 1240×780, use a 32-pixel outer margin, 24-pixel gaps, a 72-pixel header, left content width near two-thirds, and right content width near one-third:
 
@@ -154,19 +154,19 @@ Hidden:  Technical details panel below the main cards
 
 At narrower widths, stack Chair Mix below the two device cards rather than clipping controls. Set a practical minimum track size in `WM_GETMINMAXINFO`.
 
-- [ ] **Step 3: Paint cards and apply accessible control styling**
+- [x] **Step 3: Paint cards and apply accessible control styling**
 
 Handle `WM_ERASEBKGND`, `WM_PAINT`, `WM_CTLCOLORSTATIC`, `WM_CTLCOLOREDIT`, and `WM_CTLCOLORBTN` through the theme. Keep native focus cues and trackbar behavior. Use cyan only for primary actions/focus, mint for healthy state, amber for recoverable stops, and coral for faults. Do not add glow animation or transparent windows.
 
-- [ ] **Step 4: Add the Technical details disclosure**
+- [x] **Step 4: Add the Technical details disclosure**
 
 Add one `Technical details` button and `technicalDetailsExpanded_` state. Default it to false on every launch. When collapsed, hide the existing front/rear/sync telemetry controls and size the window to the dashboard. When expanded, show the exact existing sample-rate, channel-count, buffer, delay, underrun, reference/follower, ppm, and fault data without changing the engine.
 
-- [ ] **Step 5: Bind the presentation model**
+- [x] **Step 5: Bind the presentation model**
 
 In `RenderEngineStatus`, build `SurroundUiState` once and apply its text, severity colors, enable flags, hint, and Start/Stop state. Keep timer work nonblocking. During a format fault, show the amber recovery message and relabel the primary action `Restart in 5.1` or `Restart in 7.1` when detected.
 
-- [ ] **Step 6: Build and run automated tests**
+- [x] **Step 6: Build and run automated tests**
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.sln -t:Build -p:Configuration=Debug -p:Platform=x64
@@ -175,11 +175,11 @@ In `RenderEngineStatus`, build `SurroundUiState` once and apply its text, severi
 
 Expected: app and tests build, and all tests pass.
 
-- [ ] **Step 7: Inspect the running window at 100%, 150%, and 200% scaling**
+- [x] **Step 7: Inspect the running window at 100%, 150%, and 200% scaling**
 
 Launch `.\build\Debug\SoundStageRouter.exe`. Verify no clipped labels or controls, clear keyboard focus, readable disabled Side Level in 5.1, a stable layout when Technical details toggles, and a usable stacked layout at minimum width. Record screenshots for the implementation review; do not commit machine-specific images.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```powershell
 git add src/ui/CommandDeckTheme.h src/ui/CommandDeckTheme.cpp src/AppWindow.h src/AppWindow.cpp SoundStageRouter.vcxproj
@@ -197,7 +197,7 @@ git commit -m "feat(ui): add streamlined command deck"
 - Consumes: completed Command Deck and dual-format core behavior
 - Produces: consistent plain-language copy and verified Debug/Release deliverables
 
-- [ ] **Step 1: Audit user-facing copy**
+- [x] **Step 1: Audit user-facing copy**
 
 Run:
 
@@ -207,11 +207,11 @@ rg -n 'clock|ppm|underrun|fault code|virtual 5.1|SoundStage Router 5.1' src/AppW
 
 Keep technical clock/ppm/underrun language only inside Technical details. Replace stale endpoint copy with `SoundStage Router Surround`. Use `Front`, `Chair`, `Back Level`, `Side Level`, `Aligned`, and `Synchronizing outputs...` consistently.
 
-- [ ] **Step 2: Document the dashboard**
+- [x] **Step 2: Document the dashboard**
 
 Add a short README section explaining where to see the active Windows format, select Front/Chair endpoints, tune delays, balance Back/Side contributions, expand diagnostics, and recover after a format change.
 
-- [ ] **Step 3: Rebuild and test Debug**
+- [x] **Step 3: Rebuild and test Debug**
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.sln -t:Rebuild -p:Configuration=Debug -p:Platform=x64
@@ -220,7 +220,7 @@ Add a short README section explaining where to see the active Windows format, se
 
 Expected: build succeeds and all tests pass.
 
-- [ ] **Step 4: Rebuild and test Release**
+- [x] **Step 4: Rebuild and test Release**
 
 ```powershell
 & 'C:\Program Files\Microsoft Visual Studio\18\Enterprise\MSBuild\Current\Bin\MSBuild.exe' SoundStageRouter.sln -t:Rebuild -p:Configuration=Release -p:Platform=x64
@@ -229,7 +229,7 @@ Expected: build succeeds and all tests pass.
 
 Expected: build succeeds and all tests pass.
 
-- [ ] **Step 5: Run final repository checks**
+- [x] **Step 5: Run final repository checks**
 
 ```powershell
 git diff --check
@@ -239,9 +239,18 @@ git log -12 --oneline
 
 Expected: no whitespace errors; only explicitly documented hardware-install artifacts may remain untracked; commits are scoped by task.
 
-- [ ] **Step 6: Commit documentation and plan checkmarks**
+- [x] **Step 6: Commit documentation and plan checkmarks**
 
 ```powershell
 git add README.md docs/testing/hardware-acceptance.md docs/superpowers/plans/2026-08-10-command-deck-ui.md
 git commit -m "docs: explain the command deck interface"
 ```
+
+## Execution evidence
+
+| Task | Commits | Verification |
+|---|---|---|
+| 1 — Presentation model | `001c0de`, fix `56aebd0` | Debug 135/135; independent review clean after gating Ready on routability |
+| 2 — Command deck theme and layout | `95df8a5` | Debug and Release 142/142 with zero build warnings; window inspected at 100/150/200% scaling, keyboard focus and stacked minimum width verified |
+| 2 — Independent review fixes | `448f49e` | Review found 2 Important (work-area sizing, short-client overlap) and 5 Minor findings; fixed via height-floored scrollable layout, work-area clamps, mode-gated restart copy, side-label repaint, stacked badge/status room, tab order, test-mode hint; Debug and Release 144/144; live-window smoke test verified short and stacked windows scroll to a usable action bar |
+| 3 — Copy, documentation, verification | docs commit (this change) | Copy audit aligned remaining user-facing strings with the Front/Chair card names; README documents the dashboard; full Debug and Release rebuilds passed 142/142 before the fix wave and 144/144 after |
