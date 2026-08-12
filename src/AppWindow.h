@@ -18,7 +18,7 @@ namespace soundstage
     class AppWindow
     {
     public:
-        explicit AppWindow(HINSTANCE instance);
+        explicit AppWindow(HINSTANCE instance, bool backgroundMode = false);
         ~AppWindow();
 
         int Run(int showCommand);
@@ -36,6 +36,17 @@ namespace soundstage
         void UpdateTechnicalDetailsVisibility() const;
         void SetScrollOffset(int offset);
         void HandleVerticalScroll(int request);
+        void AddTrayIcon();
+        void RemoveTrayIcon();
+        void ShowFromTray();
+        void HideToTray();
+        void ShowTrayBalloon(const std::wstring& title,
+                             const std::wstring& text,
+                             bool warning);
+        void HandleTrayMessage(LPARAM event);
+        void TryBackgroundStart();
+        void ReportStartProblem(const wchar_t* text,
+                                const wchar_t* caption);
         [[nodiscard]] bool RefreshDevices();
         void PopulateControls();
         void UpdateModeControls();
@@ -44,7 +55,7 @@ namespace soundstage
         void SaveSettings();
         void StartTest();
         [[nodiscard]] std::optional<audio::RunConfiguration>
-            BuildRunConfiguration() const;
+            BuildRunConfiguration();
         void RenderEngineStatus(const audio::EngineStatus& status);
         void SetPlaybackControlsEnabled(bool selectable);
         void SetStatus(
@@ -115,6 +126,14 @@ namespace soundstage
         bool modelRecoveryVisible_ = false;
         int scrollOffset_ = 0;
         bool sideLevelWasEnabled_ = true;
+        bool backgroundMode_ = false;
+        bool autoStartArmed_ = false;
+        bool quietStartAttempt_ = false;
+        bool trayIconAdded_ = false;
+        bool closeToTrayNoticeShown_ = false;
+        bool faultBalloonShown_ = false;
+        unsigned long long lastAutoStartAttemptTick_ = 0;
+        UINT taskbarCreatedMessage_ = 0;
 
         std::vector<AudioEndpoint> endpoints_;
         bool hasSingleVirtualEndpoint_ = false;

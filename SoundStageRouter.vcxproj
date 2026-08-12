@@ -111,5 +111,8 @@
     <ClCompile Include="src\audio\SurroundUiState.cpp" />
     <ClCompile Include="src\ui\CommandDeckTheme.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="resources\SoundStageRouter.rc" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

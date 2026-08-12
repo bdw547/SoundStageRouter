@@ -8,9 +8,35 @@
 
 #pragma comment(linker, "\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
-int WINAPI wWinMain(const HINSTANCE instance, HINSTANCE, PWSTR, const int showCommand)
+int WINAPI wWinMain(const HINSTANCE instance, HINSTANCE, const PWSTR commandLine, const int showCommand)
 {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+    // One router instance only: a second launch would open duplicate
+    // shared-mode sessions on the same outputs and double the audio.
+    const HANDLE singleInstance = CreateMutexW(
+        nullptr, TRUE, L"Local\\SoundStageRouterSingleInstance");
+    if (singleInstance != nullptr && GetLastError() == ERROR_ALREADY_EXISTS)
+    {
+        const HWND existing = FindWindowW(
+            L"SoundStageRouterMainWindow", L"SoundStage Router");
+        if (existing != nullptr)
+        {
+            ShowWindow(existing, SW_SHOW);
+            if (IsIconic(existing))
+            {
+                ShowWindow(existing, SW_RESTORE);
+            }
+            SetForegroundWindow(existing);
+        }
+        CloseHandle(singleInstance);
+        return 0;
+    }
+
+    const bool backgroundMode =
+        commandLine != nullptr &&
+        (wcsstr(commandLine, L"--background") != nullptr ||
+         wcsstr(commandLine, L"--tray") != nullptr);
 
     INITCOMMONCONTROLSEX commonControls{};
     commonControls.dwSize = sizeof(commonControls);
@@ -29,8 +55,8 @@ int WINAPI wWinMain(const HINSTANCE instance, HINSTANCE, PWSTR, const int showCo
     int result = 1;
     try
     {
-        soundstage::AppWindow app(instance);
-        result = app.Run(showCommand);
+        soundstage::AppWindow app(instance, backgroundMode);
+        result = app.Run(backgroundMode ? SW_HIDE : showCommand);
     }
     catch (const std::exception& error)
     {
@@ -38,5 +64,9 @@ int WINAPI wWinMain(const HINSTANCE instance, HINSTANCE, PWSTR, const int showCo
     }
 
     CoUninitialize();
+    if (singleInstance != nullptr)
+    {
+        CloseHandle(singleInstance);
+    }
     return result;
 }

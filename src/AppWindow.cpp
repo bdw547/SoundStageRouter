@@ -1,9 +1,11 @@
 #include "AppWindow.h"
+#include "../resources/resource.h"
 #include "audio/SurroundUiState.h"
 #include "audio/VirtualSurroundContract.h"
 #include "audio/WasapiEndpointSession.h"
 
 #include <commctrl.h>
+#include <shellapi.h>
 #include <uxtheme.h>
 #include <windowsx.h>
 
@@ -37,6 +39,12 @@ namespace
     constexpr int TechnicalDetailsButtonId = 1017;
     constexpr UINT_PTR StatusTimerId = 1;
     constexpr UINT StatusTimerPeriodMs = 250;
+    constexpr UINT TrayIconMessage = WM_APP + 1;
+    constexpr UINT TrayIconId = 1;
+    constexpr int TrayOpenCommandId = 2001;
+    constexpr int TrayToggleRoutingCommandId = 2002;
+    constexpr int TrayExitCommandId = 2003;
+    constexpr unsigned AutoStartRetryIntervalMs = 5000;
 
     HMENU ControlId(const int value)
     {
@@ -88,9 +96,11 @@ namespace
 
 namespace soundstage
 {
-    AppWindow::AppWindow(const HINSTANCE instance)
+    AppWindow::AppWindow(const HINSTANCE instance, const bool backgroundMode)
         : instance_(instance),
           theme_(std::make_unique<ui::CommandDeckTheme>(GetDpiForSystem())),
+          backgroundMode_(backgroundMode),
+          autoStartArmed_(backgroundMode),
           settings_(settingsStore_.Load()),
           coordinator_(std::make_unique<audio::AudioEngineCoordinator>())
     {
@@ -99,7 +109,17 @@ namespace soundstage
         windowClass.lpfnWndProc = WindowProcedure;
         windowClass.hInstance = instance_;
         windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-        windowClass.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+        windowClass.hIcon = static_cast<HICON>(LoadImageW(
+            instance_, MAKEINTRESOURCEW(IDI_APPICON), IMAGE_ICON, 0, 0,
+            LR_DEFAULTSIZE));
+        windowClass.hIconSm = static_cast<HICON>(LoadImageW(
+            instance_, MAKEINTRESOURCEW(IDI_APPICON), IMAGE_ICON,
+            GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON),
+            LR_DEFAULTCOLOR));
+        if (windowClass.hIcon == nullptr)
+        {
+            windowClass.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+        }
         windowClass.hbrBackground = nullptr;
         windowClass.lpszClassName = WindowClassName;
         windowClass.style = CS_HREDRAW | CS_VREDRAW;
@@ -190,6 +210,9 @@ namespace soundstage
             theme_->SetDpi(GetDpiForWindow(window_));
             CreateControls();
             static_cast<void>(RefreshDevices());
+            taskbarCreatedMessage_ =
+                RegisterWindowMessageW(L"TaskbarCreated");
+            AddTrayIcon();
             SetTimer(window_, StatusTimerId, StatusTimerPeriodMs, nullptr);
             return 0;
         case WM_GETMINMAXINFO:
@@ -309,13 +332,64 @@ namespace soundstage
                 }
                 return 0;
             case StartButtonId:
+                autoStartArmed_ = backgroundMode_;
                 StartTest();
                 return 0;
             case StopButtonId:
+                autoStartArmed_ = false;
                 if (coordinator_) coordinator_->PostStop();
+                return 0;
+            case TrayOpenCommandId:
+                ShowFromTray();
+                return 0;
+            case TrayToggleRoutingCommandId:
+                if (coordinator_ &&
+                    coordinator_->Status()->state !=
+                        audio::PlaybackState::Stopped &&
+                    coordinator_->Status()->state !=
+                        audio::PlaybackState::Faulted)
+                {
+                    autoStartArmed_ = false;
+                    coordinator_->PostStop();
+                }
+                else
+                {
+                    autoStartArmed_ = backgroundMode_;
+                    StartTest();
+                }
+                return 0;
+            case TrayExitCommandId:
+                DestroyWindow(window_);
                 return 0;
             default:
                 break;
+            }
+            break;
+        case TrayIconMessage:
+            HandleTrayMessage(lParam);
+            return 0;
+        case WM_SYSCOMMAND:
+            if ((wParam & 0xFFF0) == SC_MINIMIZE)
+            {
+                HideToTray();
+                return 0;
+            }
+            break;
+        case WM_CLOSE:
+            if (backgroundMode_)
+            {
+                HideToTray();
+                if (!closeToTrayNoticeShown_)
+                {
+                    closeToTrayNoticeShown_ = true;
+                    ShowTrayBalloon(
+                        L"Still running",
+                        L"SoundStage Router keeps routing from the "
+                        L"notification area. Use Exit in the tray menu to "
+                        L"quit.",
+                        false);
+                }
+                return 0;
             }
             break;
         case WM_HSCROLL:
@@ -330,6 +404,8 @@ namespace soundstage
             if (wParam == StatusTimerId && coordinator_)
             {
                 const auto status = coordinator_->Status();
+                const audio::PlaybackState previousState =
+                    observedPlaybackState_;
                 if (audio::ShouldRefreshSurroundDiscovery(
                         observedPlaybackState_, status->state))
                 {
@@ -337,6 +413,23 @@ namespace soundstage
                 }
                 observedPlaybackState_ = status->state;
                 RenderEngineStatus(*status);
+                if (status->state == audio::PlaybackState::Running)
+                {
+                    faultBalloonShown_ = false;
+                }
+                else if (previousState != audio::PlaybackState::Faulted &&
+                         status->state == audio::PlaybackState::Faulted &&
+                         !IsWindowVisible(window_) && !faultBalloonShown_)
+                {
+                    faultBalloonShown_ = true;
+                    ShowTrayBalloon(
+                        L"Routing stopped",
+                        status->lastFault.message.empty()
+                            ? L"Review the issue in SoundStage Router."
+                            : status->lastFault.message,
+                        true);
+                }
+                TryBackgroundStart();
                 return 0;
             }
             break;
@@ -418,6 +511,7 @@ namespace soundstage
         }
         case WM_DESTROY:
             KillTimer(window_, StatusTimerId);
+            RemoveTrayIcon();
             if (coordinator_)
             {
                 coordinator_->PostStop();
@@ -427,6 +521,13 @@ namespace soundstage
             return 0;
         default:
             break;
+        }
+        if (taskbarCreatedMessage_ != 0 &&
+            message == taskbarCreatedMessage_)
+        {
+            // Explorer restarted; the notification area lost our icon.
+            trayIconAdded_ = false;
+            AddTrayIcon();
         }
         return DefWindowProcW(window_, message, wParam, lParam);
     }
@@ -1090,6 +1191,152 @@ namespace soundstage
                          RDW_UPDATENOW);
     }
 
+    void AppWindow::AddTrayIcon()
+    {
+        if (trayIconAdded_)
+        {
+            return;
+        }
+        NOTIFYICONDATAW data{};
+        data.cbSize = sizeof(data);
+        data.hWnd = window_;
+        data.uID = TrayIconId;
+        data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
+        data.uCallbackMessage = TrayIconMessage;
+        data.hIcon = static_cast<HICON>(LoadImageW(
+            instance_, MAKEINTRESOURCEW(IDI_APPICON), IMAGE_ICON,
+            GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON),
+            LR_DEFAULTCOLOR));
+        if (data.hIcon == nullptr)
+        {
+            data.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+        }
+        wcscpy_s(data.szTip, L"SoundStage Router");
+        trayIconAdded_ = Shell_NotifyIconW(NIM_ADD, &data) != FALSE;
+    }
+
+    void AppWindow::RemoveTrayIcon()
+    {
+        if (!trayIconAdded_)
+        {
+            return;
+        }
+        NOTIFYICONDATAW data{};
+        data.cbSize = sizeof(data);
+        data.hWnd = window_;
+        data.uID = TrayIconId;
+        Shell_NotifyIconW(NIM_DELETE, &data);
+        trayIconAdded_ = false;
+    }
+
+    void AppWindow::ShowFromTray()
+    {
+        ShowWindow(window_, SW_SHOW);
+        if (IsIconic(window_))
+        {
+            ShowWindow(window_, SW_RESTORE);
+        }
+        SetForegroundWindow(window_);
+    }
+
+    void AppWindow::HideToTray()
+    {
+        ShowWindow(window_, SW_HIDE);
+    }
+
+    void AppWindow::ShowTrayBalloon(const std::wstring& title,
+                                    const std::wstring& text,
+                                    const bool warning)
+    {
+        if (!trayIconAdded_)
+        {
+            return;
+        }
+        NOTIFYICONDATAW data{};
+        data.cbSize = sizeof(data);
+        data.hWnd = window_;
+        data.uID = TrayIconId;
+        data.uFlags = NIF_INFO;
+        data.dwInfoFlags = warning ? NIIF_WARNING : NIIF_INFO;
+        wcsncpy_s(data.szInfoTitle, title.c_str(), _TRUNCATE);
+        wcsncpy_s(data.szInfo, text.c_str(), _TRUNCATE);
+        Shell_NotifyIconW(NIM_MODIFY, &data);
+    }
+
+    void AppWindow::HandleTrayMessage(const LPARAM event)
+    {
+        switch (LOWORD(event))
+        {
+        case WM_LBUTTONUP:
+        case WM_LBUTTONDBLCLK:
+            ShowFromTray();
+            return;
+        case WM_RBUTTONUP:
+        case WM_CONTEXTMENU:
+        {
+            const HMENU menu = CreatePopupMenu();
+            if (menu == nullptr)
+            {
+                return;
+            }
+            const audio::PlaybackState state = coordinator_
+                ? coordinator_->Status()->state
+                : audio::PlaybackState::Stopped;
+            const bool active =
+                state != audio::PlaybackState::Stopped &&
+                state != audio::PlaybackState::Faulted;
+            AppendMenuW(menu, MF_STRING, TrayOpenCommandId,
+                        L"Open SoundStage Router");
+            AppendMenuW(menu, MF_STRING, TrayToggleRoutingCommandId,
+                        active ? L"Stop Routing" : L"Start Routing");
+            AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+            AppendMenuW(menu, MF_STRING, TrayExitCommandId, L"Exit");
+            POINT cursor{};
+            GetCursorPos(&cursor);
+            // Required so the menu dismisses when focus moves elsewhere.
+            SetForegroundWindow(window_);
+            TrackPopupMenu(menu, TPM_RIGHTBUTTON, cursor.x, cursor.y, 0,
+                           window_, nullptr);
+            PostMessageW(window_, WM_NULL, 0, 0);
+            DestroyMenu(menu);
+            return;
+        }
+        default:
+            return;
+        }
+    }
+
+    void AppWindow::TryBackgroundStart()
+    {
+        if (!coordinator_)
+        {
+            return;
+        }
+        if (!ui::ShouldAttemptBackgroundStart(
+                autoStartArmed_, coordinator_->Status()->state,
+                GetTickCount64(), lastAutoStartAttemptTick_,
+                AutoStartRetryIntervalMs))
+        {
+            return;
+        }
+        lastAutoStartAttemptTick_ = GetTickCount64();
+        quietStartAttempt_ = true;
+        StartTest();
+        quietStartAttempt_ = false;
+    }
+
+    void AppWindow::ReportStartProblem(const wchar_t* text,
+                                       const wchar_t* caption)
+    {
+        if (quietStartAttempt_)
+        {
+            SetStatus(std::wstring(L"Waiting to start: ") + text,
+                      audio::UiSeverity::Warning);
+            return;
+        }
+        MessageBoxW(window_, text, caption, MB_OK | MB_ICONWARNING);
+    }
+
     void AppWindow::UpdateTechnicalDetailsVisibility() const
     {
         const int command = technicalDetailsExpanded_ ? SW_SHOW : SW_HIDE;
@@ -1434,6 +1681,12 @@ namespace soundstage
         }
         catch (const std::exception& error)
         {
+            if (quietStartAttempt_)
+            {
+                SetStatus(L"Waiting to start: settings could not be saved.",
+                          audio::UiSeverity::Warning);
+                return;
+            }
             MessageBoxA(window_, error.what(), "Settings error",
                         MB_OK | MB_ICONERROR);
             return;
@@ -1450,30 +1703,34 @@ namespace soundstage
         catch (const std::exception& error)
         {
             SetPlaybackControlsEnabled(true);
+            if (quietStartAttempt_)
+            {
+                SetStatus(L"Waiting to start: playback could not begin.",
+                          audio::UiSeverity::Warning);
+                return;
+            }
             MessageBoxA(window_, error.what(), "Playback error",
                         MB_OK | MB_ICONERROR);
         }
     }
 
     std::optional<audio::RunConfiguration>
-    AppWindow::BuildRunConfiguration() const
+    AppWindow::BuildRunConfiguration()
     {
         const int frontIndex = SelectedEndpointIndex(frontCombo_);
         const int rearIndex = SelectedEndpointIndex(rearCombo_);
         if (frontIndex < 0 || rearIndex < 0)
         {
-            MessageBoxW(
-                window_,
+            ReportStartProblem(
                 L"Both saved outputs must be active before starting.",
-                L"Output unavailable", MB_OK | MB_ICONWARNING);
+                L"Output unavailable");
             return std::nullopt;
         }
         if (frontIndex == rearIndex)
         {
-            MessageBoxW(
-                window_,
+            ReportStartProblem(
                 L"Front and Chair must use different Windows output devices.",
-                L"Duplicate output", MB_OK | MB_ICONWARNING);
+                L"Duplicate output");
             return std::nullopt;
         }
 
@@ -1488,9 +1745,9 @@ namespace soundstage
         if (endpoints_[frontIndex].isVirtualEndpoint ||
             endpoints_[rearIndex].isVirtualEndpoint)
         {
-            MessageBoxW(
-                window_, L"The virtual endpoint cannot be a physical output.",
-                L"Feedback prevented", MB_OK | MB_ICONWARNING);
+            ReportStartProblem(
+                L"The virtual endpoint cannot be a physical output.",
+                L"Feedback prevented");
             return std::nullopt;
         }
         if (configuration.mode == audio::PlaybackMode::SystemAudio)
@@ -1507,12 +1764,10 @@ namespace soundstage
                 });
             if (count != 1 || virtualEndpoint == endpoints_.end())
             {
-                MessageBoxW(
-                    window_,
+                ReportStartProblem(
                     L"SoundStage Router Surround is missing, duplicated, or "
                     L"is not set to 5.1 or 7.1 at 48 kHz float32.",
-                    L"Virtual driver unavailable",
-                    MB_OK | MB_ICONWARNING);
+                    L"Virtual driver unavailable");
                 return std::nullopt;
             }
             configuration.virtualEndpointId = virtualEndpoint->id;

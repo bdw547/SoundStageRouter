@@ -65,6 +65,25 @@ namespace soundstage::ui
                detectedFormat == audio::VirtualSurroundFormat::Unsupported;
     }
 
+    bool ShouldAttemptBackgroundStart(
+        const bool armed,
+        const audio::PlaybackState state,
+        const unsigned long long nowMs,
+        const unsigned long long lastAttemptMs,
+        const unsigned intervalMs) noexcept
+    {
+        if (!armed)
+        {
+            return false;
+        }
+        if (state != audio::PlaybackState::Stopped &&
+            state != audio::PlaybackState::Faulted)
+        {
+            return false;
+        }
+        return nowMs - lastAttemptMs >= intervalMs;
+    }
+
     CommandDeckLayout ComputeCommandDeckLayout(
         const int clientWidth,
         const int clientHeight,

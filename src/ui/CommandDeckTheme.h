@@ -53,6 +53,16 @@ namespace soundstage::ui
         audio::VirtualSurroundFormat routedFormat,
         audio::VirtualSurroundFormat detectedFormat) noexcept;
 
+    // Background launches retry routing until the saved outputs (typically
+    // a late-connecting Bluetooth device) come back; attempts are rate
+    // limited and stop while the engine is starting, running, or stopping.
+    [[nodiscard]] bool ShouldAttemptBackgroundStart(
+        bool armed,
+        audio::PlaybackState state,
+        unsigned long long nowMs,
+        unsigned long long lastAttemptMs,
+        unsigned intervalMs) noexcept;
+
     [[nodiscard]] CommandDeckLayout ComputeCommandDeckLayout(
         int clientWidth,
         int clientHeight,

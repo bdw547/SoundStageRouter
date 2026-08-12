@@ -57,6 +57,37 @@ outputs...** while alignment settles.
   plus clock correction in ppm, capture overflow/underrun counts, and the last
   fault code. It starts collapsed on every launch.
 
+## Run in the background
+
+Launching with the `--background` flag starts the app hidden in the
+notification area and begins routing automatically with the saved layout. If
+an output is not ready yet — typically the Bluetooth chair connecting shortly
+after sign-in — it retries every five seconds and reports **Waiting to
+start** instead of showing dialogs. While launched this way, a fault also
+re-arms the same retry, so routing returns when a disconnected output comes
+back; a tray notification reports the interruption. Stopping routing yourself
+always disarms the retry until you start it again.
+
+The tray icon is always available while the app runs: double-click it to open
+the window, right-click for **Open**, **Start/Stop Routing**, and **Exit**.
+Minimizing hides the window to the tray. In background mode the close button
+also hides to the tray; **Exit** in the tray menu quits and stops routing.
+Only one instance runs at a time — launching the app again just reopens the
+running window.
+
+To start with Windows, register the flag under the current user (no
+administrator needed):
+
+```powershell
+Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'SoundStageRouter' -Value '"C:\path\to\build\Release\SoundStageRouter.exe" --background'
+```
+
+Remove the same value to stop it from starting with Windows:
+
+```powershell
+Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'SoundStageRouter'
+```
+
 The virtual endpoint supports these exact shared-mode loopback layouts:
 
 | Windows format | Channels | Mask | Channel order |

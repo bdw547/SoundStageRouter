@@ -2,11 +2,13 @@
 #include "../../src/audio/VirtualSurroundContract.h"
 #include "../../src/ui/CommandDeckTheme.h"
 
+using soundstage::audio::PlaybackState;
 using soundstage::audio::VirtualSurroundFormat;
 using soundstage::ui::ComputeCommandDeckLayout;
 using soundstage::ui::HasValidPhysicalRouteSelection;
 using soundstage::ui::IsCommandDeckFormatChange;
 using soundstage::ui::IsCommandDeckUnsupportedFormatFault;
+using soundstage::ui::ShouldAttemptBackgroundStart;
 
 namespace
 {
@@ -92,6 +94,24 @@ TEST(CommandDeckLayout_ExpandedDetailsAddsPanelWithoutMovingMainCards)
     EXPECT_EQ(expanded.detailsCard.top, collapsed.actionBar.top);
     EXPECT_EQ(expanded.actionBar.top, 924L);
     EXPECT_EQ(expanded.preferredClientSize.cy, 1044L);
+}
+
+TEST(CommandDeckBackground_RetriesOnlyWhileArmedIdleAndDue)
+{
+    EXPECT_TRUE(ShouldAttemptBackgroundStart(
+        true, PlaybackState::Stopped, 5000, 0, 5000));
+    EXPECT_TRUE(ShouldAttemptBackgroundStart(
+        true, PlaybackState::Faulted, 12000, 5000, 5000));
+    EXPECT_TRUE(!ShouldAttemptBackgroundStart(
+        false, PlaybackState::Stopped, 60000, 0, 5000));
+    EXPECT_TRUE(!ShouldAttemptBackgroundStart(
+        true, PlaybackState::Running, 60000, 0, 5000));
+    EXPECT_TRUE(!ShouldAttemptBackgroundStart(
+        true, PlaybackState::Preparing, 60000, 0, 5000));
+    EXPECT_TRUE(!ShouldAttemptBackgroundStart(
+        true, PlaybackState::Stopping, 60000, 0, 5000));
+    EXPECT_TRUE(!ShouldAttemptBackgroundStart(
+        true, PlaybackState::Stopped, 7000, 5000, 5000));
 }
 
 TEST(CommandDeckRoute_RequiresTwoDistinctPhysicalSelections)
