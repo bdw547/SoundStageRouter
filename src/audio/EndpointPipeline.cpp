@@ -9,6 +9,14 @@ namespace soundstage::audio
     static_assert(std::atomic<std::uint32_t>::is_always_lock_free);
     static_assert(std::atomic<double>::is_always_lock_free);
 
+    namespace
+    {
+        // About -72 dBFS: several quantization steps even at 16 bits, so
+        // sink silence detectors always see signal, yet far below the
+        // audible floor of a listening room.
+        constexpr float KeepAliveAmplitude = 2.5e-4f;
+    }
+
     EndpointPipeline::EndpointPipeline()
         : delay_(static_cast<std::size_t>(MillisecondsToFrames(MaximumDelayMs))),
           converter_({})
@@ -50,6 +58,7 @@ namespace soundstage::audio
         delayMs_.store(delayMs, std::memory_order_relaxed);
         correctionPpm_.store(0.0, std::memory_order_relaxed);
         gain_ = std::clamp(configuration.gain, 0.0f, 1.0f);
+        keepSinkAwake_ = configuration.keepSinkAwake;
         delay_.Reset(static_cast<double>(MillisecondsToFrames(delayMs)));
         resampler_.Reset(
             static_cast<double>(MasterSampleRate) /
@@ -101,7 +110,27 @@ namespace soundstage::audio
             frames[index].left *= gain;
             frames[index].right *= gain;
         }
+        // Applied after every gain stage so the sink sees signal even
+        // while the source is silent or the output is faded out.
+        if (keepSinkAwake_)
+        {
+            for (StereoFrame& frame : frames)
+            {
+                frame.left += NextKeepAliveSample();
+                frame.right += NextKeepAliveSample();
+            }
+        }
         return converter_.Convert(frames, output);
+    }
+
+    float EndpointPipeline::NextKeepAliveSample() noexcept
+    {
+        noiseState_ ^= noiseState_ << 13;
+        noiseState_ ^= noiseState_ >> 17;
+        noiseState_ ^= noiseState_ << 5;
+        const float unit = static_cast<float>(noiseState_) /
+            static_cast<float>(0xFFFFFFFFu);
+        return (unit * 2.0f - 1.0f) * KeepAliveAmplitude;
     }
 
     std::uint32_t EndpointPipeline::CurrentDelayMs() const noexcept

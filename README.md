@@ -117,6 +117,11 @@ exceeds the valid sample range. In 5.1, Side samples are zero and Side Level is
 disabled because it has no signal effect. The physical Front and Chair
 **Level (%)** fields remain separate output master gains, set before a run.
 
+The Front output always carries an inaudible keep-alive noise floor (about
+-72 dBFS) so soundbars and receivers with silence-detecting auto-mute never
+doze off during quiet passages; without it, the first second of audio after
+silence arrives late on such sinks while a Bluetooth rear stays instant.
+
 Rear fill is applied only when all native BL, BR, SL, and SR samples are
 silent, as determined before the Back/Side controls are applied. Setting a
 native contribution to 0% therefore does not make fill appear. Ambient uses

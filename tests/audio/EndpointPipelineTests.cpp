@@ -88,6 +88,43 @@ TEST(Pipeline_FrontDelayStartsWithSilence)
     }
 }
 
+TEST(Pipeline_KeepSinkAwakeAddsInaudibleFloorToSilence)
+{
+    EndpointPipeline pipeline;
+    PipelineConfiguration config{
+        SpeakerRole::Front, TestPattern::FrontTone, 10,
+        EndpointMixFormat{48000, 2, SampleEncoding::Float32, 8}, 480};
+    config.keepSinkAwake = true;
+    EXPECT_TRUE(pipeline.Reset(config));
+    std::array<std::byte, 480 * 8> output{};
+    // The 10 ms delay makes this first block pure source silence.
+    EXPECT_TRUE(pipeline.Render(output, 480));
+    const float* samples = reinterpret_cast<const float*>(output.data());
+    bool nonzero = false;
+    float peak = 0.0f;
+    for (std::size_t index = 0; index < 480 * 2; ++index)
+    {
+        const float magnitude =
+            samples[index] < 0.0f ? -samples[index] : samples[index];
+        nonzero = nonzero || magnitude > 0.0f;
+        if (magnitude > peak)
+        {
+            peak = magnitude;
+        }
+    }
+    EXPECT_TRUE(nonzero);
+    EXPECT_TRUE(peak <= 2.6e-4f);
+
+    // A fully faded-out block must still carry the keep-alive floor.
+    EXPECT_TRUE(pipeline.Render(output, 480, 0.0f, 0.0f));
+    bool mutedNonzero = false;
+    for (std::size_t index = 0; index < 480 * 2; ++index)
+    {
+        mutedNonzero = mutedNonzero || samples[index] != 0.0f;
+    }
+    EXPECT_TRUE(mutedNonzero);
+}
+
 TEST(Pipeline_LiveDelayUpdateConverges)
 {
     EndpointPipeline pipeline;

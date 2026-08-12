@@ -23,6 +23,7 @@ namespace soundstage::audio
         PlaybackMode mode = PlaybackMode::TestSignals;
         MasterFrameRingBuffer* masterFrames = nullptr;
         float gain = 1.0f;
+        bool keepSinkAwake = false;
     };
 
     class EndpointPipeline final : private IFrameSource
@@ -40,6 +41,7 @@ namespace soundstage::audio
 
     private:
         [[nodiscard]] StereoFrame NextFrame() noexcept override;
+        [[nodiscard]] float NextKeepAliveSample() noexcept;
 
         SpeakerRole role_ = SpeakerRole::Front;
         TestPattern pattern_ = TestPattern::PairedClicks;
@@ -55,6 +57,8 @@ namespace soundstage::audio
         std::atomic<std::uint32_t> delayMs_{0};
         std::atomic<double> correctionPpm_{0.0};
         float gain_ = 1.0f;
+        bool keepSinkAwake_ = false;
+        std::uint32_t noiseState_ = 0x51D3A7C9u;
         bool ready_ = false;
     };
 }
