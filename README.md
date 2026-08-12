@@ -76,10 +76,15 @@ Only one instance runs at a time — launching the app again just reopens the
 running window.
 
 To start with Windows, register the flag under the current user (no
-administrator needed):
+administrator needed). If the repository lives inside a synced folder
+(OneDrive, Dropbox), first copy the executable to a plain local folder such
+as `%LOCALAPPDATA%\SoundStageRouter\app` and register that copy: synced
+placeholder files are reparse points that may not be servable at sign-in,
+and the launch then fails silently. Re-copy the executable after each
+rebuild.
 
 ```powershell
-Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'SoundStageRouter' -Value '"C:\path\to\build\Release\SoundStageRouter.exe" --background'
+Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'SoundStageRouter' -Value '"C:\path\to\local\SoundStageRouter.exe" --background'
 ```
 
 Remove the same value to stop it from starting with Windows:
