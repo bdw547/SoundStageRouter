@@ -1646,6 +1646,12 @@ namespace soundstage
             return;
         }
 
+        // FrontKeepAliveDb is tuned by editing routing.ini directly; adopt
+        // the on-disk value so a live edit applies on the next start
+        // instead of being overwritten by the stale in-memory copy.
+        settings_.frontKeepAliveDb =
+            settingsStore_.Load().frontKeepAliveDb;
+
         std::optional<audio::RunConfiguration> configuration =
             BuildRunConfiguration();
         if (!configuration)
