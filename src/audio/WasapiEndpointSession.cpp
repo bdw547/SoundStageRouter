@@ -185,7 +185,7 @@ namespace soundstage::audio
                 if (!pipeline.Reset({
                         role, pattern, route.delayMs,
                         mixFormat, bufferFrames, mode, masterFrames,
-                        route.gain, route.keepSinkAwake}))
+                        route.gain, route.keepAliveLevel}))
                 {
                     throw BackendFailure{UnsupportedFormatCode};
                 }

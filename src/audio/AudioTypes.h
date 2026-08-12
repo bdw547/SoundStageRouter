@@ -46,9 +46,10 @@ namespace soundstage::audio
         std::uint32_t delayMs = 0;
         bool isClockReference = false;
         float gain = 1.0f;
-        // Mix an inaudible noise floor into this output so sinks with
-        // silence-detecting auto-mute (S/PDIF soundbars) never doze off.
-        bool keepSinkAwake = false;
+        // Linear amplitude of an infrasonic keep-alive pilot mixed into
+        // this output so sinks with silence-detecting auto-mute (S/PDIF
+        // soundbars) never doze off. Zero disables it.
+        float keepAliveLevel = 0.0f;
     };
 
     struct RunConfiguration

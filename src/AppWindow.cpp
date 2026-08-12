@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <cmath>
 #include <iomanip>
 #include <optional>
 #include <sstream>
@@ -1781,22 +1782,24 @@ namespace soundstage
         configuration.surroundMix = {
             static_cast<float>(ReadSurroundLevel(backLevel_)) / 100.0f,
             static_cast<float>(ReadSurroundLevel(sideLevel_)) / 100.0f};
+        // Front carries the keep-alive pilot: S/PDIF soundbars mute on
+        // digital silence and take a second to wake, which lags them
+        // behind the always-streaming Bluetooth chair at audio onset.
+        const float keepAliveLevel = std::pow(
+            10.0f, static_cast<float>(settings_.frontKeepAliveDb) / 20.0f);
         configuration.routes = {
-            // Front carries the keep-alive floor: S/PDIF soundbars mute on
-            // digital silence and take a second to wake, which lags them
-            // behind the always-streaming Bluetooth chair at audio onset.
             {audio::SpeakerRole::Front,
              endpoints_[frontIndex].id,
              audio::ClampDelayMs(ReadDelay(frontDelay_)),
              false,
              static_cast<float>(ReadLevel(frontLevel_)) / 100.0f,
-             true},
+             keepAliveLevel},
             {audio::SpeakerRole::Rear,
              endpoints_[rearIndex].id,
              audio::ClampDelayMs(ReadDelay(rearDelay_)),
              true,
              static_cast<float>(ReadLevel(rearLevel_)) / 100.0f,
-             false}
+             0.0f}
         };
         return configuration;
     }

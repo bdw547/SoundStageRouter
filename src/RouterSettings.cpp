@@ -43,6 +43,24 @@ namespace
         return static_cast<int>(value);
     }
 
+    std::optional<int> ParseKeepAliveDb(const std::wstring_view text)
+    {
+        if (text.empty())
+        {
+            return std::nullopt;
+        }
+        std::wstring owned(text);
+        wchar_t* end = nullptr;
+        errno = 0;
+        const long value = std::wcstol(owned.c_str(), &end, 10);
+        if (errno == ERANGE || end == owned.c_str() ||
+            *end != L'\0' || value < -90 || value > -30)
+        {
+            return std::nullopt;
+        }
+        return static_cast<int>(value);
+    }
+
     std::optional<int> ParsePercent(const std::wstring_view text)
     {
         if (text.empty())
@@ -189,6 +207,8 @@ namespace soundstage
             ReadString(path_, L"BackLevelPercent", L"100"));
         const std::optional<int> sideLevel = ParsePercent(
             ReadString(path_, L"SideLevelPercent", L"100"));
+        const std::optional<int> keepAliveDb = ParseKeepAliveDb(
+            ReadString(path_, L"FrontKeepAliveDb", L"-48"));
         const std::wstring pattern = ReadString(
             path_, L"TestPattern", L"PairedClicks");
         const std::wstring mode = ReadString(
@@ -203,6 +223,7 @@ namespace soundstage
             rearLevel.value_or(100));
         settings.backLevelPercent = backLevel.value_or(100);
         settings.sideLevelPercent = sideLevel.value_or(100);
+        settings.frontKeepAliveDb = keepAliveDb.value_or(-48);
         settings.lastPattern = TestPatternFromString(pattern);
         settings.mode = mode == L"TestSignals"
             ? audio::PlaybackMode::TestSignals
@@ -216,6 +237,7 @@ namespace soundstage
             !frontDelay.has_value() || !rearDelay.has_value() ||
             !frontLevel.has_value() || !rearLevel.has_value() ||
             !backLevel.has_value() || !sideLevel.has_value() ||
+            !keepAliveDb.has_value() ||
             !IsKnownPatternString(pattern) ||
             !IsKnownModeString(mode) ||
             !IsKnownRearFillString(rearFill);
@@ -238,6 +260,8 @@ namespace soundstage
             audio::ClampLevelPercent(settings.backLevelPercent)));
         WriteString(path_, L"SideLevelPercent", std::to_wstring(
             audio::ClampLevelPercent(settings.sideLevelPercent)));
+        WriteString(path_, L"FrontKeepAliveDb", std::to_wstring(
+            std::clamp(settings.frontKeepAliveDb, -90, -30)));
         WriteString(path_, L"TestPattern",
                     std::wstring(TestPatternToString(settings.lastPattern)));
         WriteString(path_, L"Mode",

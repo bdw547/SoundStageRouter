@@ -117,10 +117,15 @@ exceeds the valid sample range. In 5.1, Side samples are zero and Side Level is
 disabled because it has no signal effect. The physical Front and Chair
 **Level (%)** fields remain separate output master gains, set before a run.
 
-The Front output always carries an inaudible keep-alive noise floor (about
--72 dBFS) so soundbars and receivers with silence-detecting auto-mute never
-doze off during quiet passages; without it, the first second of audio after
-silence arrives late on such sinks while a Bluetooth rear stays instant.
+The Front output always carries an inaudible keep-alive signal — a 20 Hz
+pilot tone plus a broadband dither floor 24 dB below it — so soundbars and
+receivers with silence-detecting auto-mute never doze off during quiet
+passages; without it, the first second of audio after silence arrives late
+on such sinks while a Bluetooth rear stays instant. Hearing thresholds near
+20 Hz sit around 75 dB SPL, which keeps the pilot imperceptible. The level
+defaults to -48 dBFS and is tunable via `FrontKeepAliveDb` in `routing.ini`
+(clamped to -90..-30; raise it toward -36 for stubborn sinks, then restart
+routing).
 
 Rear fill is applied only when all native BL, BR, SL, and SR samples are
 silent, as determined before the Back/Side controls are applied. Setting a

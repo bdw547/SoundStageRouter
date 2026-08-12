@@ -23,7 +23,7 @@ namespace soundstage::audio
         PlaybackMode mode = PlaybackMode::TestSignals;
         MasterFrameRingBuffer* masterFrames = nullptr;
         float gain = 1.0f;
-        bool keepSinkAwake = false;
+        float keepAliveLevel = 0.0f;
     };
 
     class EndpointPipeline final : private IFrameSource
@@ -57,7 +57,9 @@ namespace soundstage::audio
         std::atomic<std::uint32_t> delayMs_{0};
         std::atomic<double> correctionPpm_{0.0};
         float gain_ = 1.0f;
-        bool keepSinkAwake_ = false;
+        float keepAliveLevel_ = 0.0f;
+        float keepAlivePhase_ = 0.0f;
+        float keepAliveIncrement_ = 0.0f;
         std::uint32_t noiseState_ = 0x51D3A7C9u;
         bool ready_ = false;
     };

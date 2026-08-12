@@ -26,6 +26,9 @@ namespace soundstage
         int rearLevelPercent = 100;
         int backLevelPercent = 100;
         int sideLevelPercent = 100;
+        // Keep-alive pilot level for the front output in dBFS. Editable
+        // in routing.ini; clamped to [-90, -30].
+        int frontKeepAliveDb = -48;
         audio::TestPattern lastPattern =
             audio::TestPattern::PairedClicks;
         audio::PlaybackMode mode = audio::PlaybackMode::SystemAudio;

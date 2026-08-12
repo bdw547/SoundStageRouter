@@ -88,13 +88,13 @@ TEST(Pipeline_FrontDelayStartsWithSilence)
     }
 }
 
-TEST(Pipeline_KeepSinkAwakeAddsInaudibleFloorToSilence)
+TEST(Pipeline_KeepAlivePilotFillsSilenceWithinItsLevel)
 {
     EndpointPipeline pipeline;
     PipelineConfiguration config{
         SpeakerRole::Front, TestPattern::FrontTone, 10,
         EndpointMixFormat{48000, 2, SampleEncoding::Float32, 8}, 480};
-    config.keepSinkAwake = true;
+    config.keepAliveLevel = 0.004f; // about -48 dBFS
     EXPECT_TRUE(pipeline.Reset(config));
     std::array<std::byte, 480 * 8> output{};
     // The 10 ms delay makes this first block pure source silence.
@@ -102,20 +102,25 @@ TEST(Pipeline_KeepSinkAwakeAddsInaudibleFloorToSilence)
     const float* samples = reinterpret_cast<const float*>(output.data());
     bool nonzero = false;
     float peak = 0.0f;
+    double energy = 0.0;
     for (std::size_t index = 0; index < 480 * 2; ++index)
     {
         const float magnitude =
             samples[index] < 0.0f ? -samples[index] : samples[index];
         nonzero = nonzero || magnitude > 0.0f;
+        energy += magnitude;
         if (magnitude > peak)
         {
             peak = magnitude;
         }
     }
     EXPECT_TRUE(nonzero);
-    EXPECT_TRUE(peak <= 2.6e-4f);
+    // Pilot plus dither never exceeds level * (1 + ditherRatio).
+    EXPECT_TRUE(peak <= 0.004f * 1.07f);
+    // The pilot supplies steady energy, not a few stray samples.
+    EXPECT_TRUE(energy > 0.004 * 480 * 2 * 0.1);
 
-    // A fully faded-out block must still carry the keep-alive floor.
+    // A fully faded-out block must still carry the keep-alive signal.
     EXPECT_TRUE(pipeline.Render(output, 480, 0.0f, 0.0f));
     bool mutedNonzero = false;
     for (std::size_t index = 0; index < 480 * 2; ++index)

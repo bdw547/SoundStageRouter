@@ -11,10 +11,16 @@ namespace soundstage::audio
 
     namespace
     {
-        // About -72 dBFS: several quantization steps even at 16 bits, so
-        // sink silence detectors always see signal, yet far below the
-        // audible floor of a listening room.
-        constexpr float KeepAliveAmplitude = 2.5e-4f;
+        // Infrasonic pilot: the hearing threshold near 20 Hz is roughly
+        // 75 dB SPL, so even a -48 dBFS tone stays imperceptible while
+        // giving sink level detectors steady energy to see.
+        constexpr float KeepAliveToneHz = 20.0f;
+        constexpr float TwoPi = 6.28318530717958647692f;
+        // Broadband dither rides 24 dB below the pilot in case the sink
+        // filters out infrasonics before detecting.
+        constexpr float KeepAliveDitherRatio = 0.0625f;
+        // Never allow more than -26 dBFS regardless of configuration.
+        constexpr float KeepAliveCeiling = 0.05f;
     }
 
     EndpointPipeline::EndpointPipeline()
@@ -58,7 +64,11 @@ namespace soundstage::audio
         delayMs_.store(delayMs, std::memory_order_relaxed);
         correctionPpm_.store(0.0, std::memory_order_relaxed);
         gain_ = std::clamp(configuration.gain, 0.0f, 1.0f);
-        keepSinkAwake_ = configuration.keepSinkAwake;
+        keepAliveLevel_ = std::clamp(
+            configuration.keepAliveLevel, 0.0f, KeepAliveCeiling);
+        keepAlivePhase_ = 0.0f;
+        keepAliveIncrement_ = TwoPi * KeepAliveToneHz /
+            static_cast<float>(configuration.mixFormat.sampleRate);
         delay_.Reset(static_cast<double>(MillisecondsToFrames(delayMs)));
         resampler_.Reset(
             static_cast<double>(MasterSampleRate) /
@@ -112,12 +122,19 @@ namespace soundstage::audio
         }
         // Applied after every gain stage so the sink sees signal even
         // while the source is silent or the output is faded out.
-        if (keepSinkAwake_)
+        if (keepAliveLevel_ > 0.0f)
         {
             for (StereoFrame& frame : frames)
             {
-                frame.left += NextKeepAliveSample();
-                frame.right += NextKeepAliveSample();
+                const float pilot =
+                    std::sin(keepAlivePhase_) * keepAliveLevel_;
+                keepAlivePhase_ += keepAliveIncrement_;
+                if (keepAlivePhase_ >= TwoPi)
+                {
+                    keepAlivePhase_ -= TwoPi;
+                }
+                frame.left += pilot + NextKeepAliveSample();
+                frame.right += pilot + NextKeepAliveSample();
             }
         }
         return converter_.Convert(frames, output);
@@ -130,7 +147,8 @@ namespace soundstage::audio
         noiseState_ ^= noiseState_ << 5;
         const float unit = static_cast<float>(noiseState_) /
             static_cast<float>(0xFFFFFFFFu);
-        return (unit * 2.0f - 1.0f) * KeepAliveAmplitude;
+        return (unit * 2.0f - 1.0f) *
+            keepAliveLevel_ * KeepAliveDitherRatio;
     }
 
     std::uint32_t EndpointPipeline::CurrentDelayMs() const noexcept
